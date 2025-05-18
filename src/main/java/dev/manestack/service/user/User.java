@@ -7,6 +7,8 @@ public class User {
     private String username;
     private String profileURL;
     private Role role;
+    private String bankName;
+    private String accountNumber;
 
     public int getUserId() {
         return userId;
@@ -54,6 +56,22 @@ public class User {
 
     public void setRole(Role role) {
         this.role = role;
+    }
+
+    public String getBankName() {
+        return bankName;
+    }
+
+    public void setBankName(String bankName) {
+        this.bankName = bankName;
+    }
+
+    public String getAccountNumber() {
+        return accountNumber;
+    }
+
+    public void setAccountNumber(String accountNumber) {
+        this.accountNumber = accountNumber;
     }
 
     public enum Role {
