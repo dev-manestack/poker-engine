@@ -1,5 +1,8 @@
 package dev.manestack.service.user;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class User {
     private int userId;
     private String email;
@@ -9,6 +12,7 @@ public class User {
     private Role role;
     private String bankName;
     private String accountNumber;
+    private String password;
 
     public int getUserId() {
         return userId;
@@ -72,6 +76,32 @@ public class User {
 
     public void setAccountNumber(String accountNumber) {
         this.accountNumber = accountNumber;
+    }
+
+    public String getPassword() {
+        return password;
+    }
+
+    public void setPassword(String password) {
+        this.password = password;
+    }
+
+    public void validateRegister() {
+        if (username == null || username.isEmpty()) {
+            throw new IllegalArgumentException("Username is required");
+        }
+        if (email == null || email.isEmpty()) {
+            throw new IllegalArgumentException("Email is required");
+        }
+        if (bankName == null || bankName.isEmpty()) {
+            throw new IllegalArgumentException("Bank name is required");
+        }
+        if (accountNumber == null || accountNumber.isEmpty()) {
+            throw new IllegalArgumentException("Account number is required");
+        }
+        if (password == null || password.isEmpty()) {
+            throw new IllegalArgumentException("Password is required");
+        }
     }
 
     public enum Role {
