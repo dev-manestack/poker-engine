@@ -4,7 +4,6 @@ import at.favre.lib.crypto.bcrypt.BCrypt;
 import dev.manestack.service.user.User;
 import io.smallrye.jwt.build.Jwt;
 import io.smallrye.mutiny.Uni;
-import io.vertx.core.json.JsonObject;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
@@ -38,6 +37,21 @@ public class UserService {
                 .sign();
     }
 
+    public Uni<User> fetchUser(Integer userId) {
+        return Uni.createFrom().voidItem()
+                .map(unused -> context.selectFrom(POKER_USER)
+                        .where(POKER_USER.USER_ID.eq(userId))
+                        .fetchOneInto(User.class))
+                .onItem().transform(user -> {
+                    if (user != null) {
+                        user.setPassword(null);
+                        user.setBankName(null);
+                        user.setAccountNumber(null);
+                    }
+                    return user;
+                });
+    }
+
     public Uni<List<User>> searchUsers(String username) {
         return Uni.createFrom().voidItem()
                 .map(unused -> {
@@ -46,7 +60,7 @@ public class UserService {
                             .where(POKER_USER.USERNAME.likeIgnoreCase("%" + username + "%"))
                             .fetchInto(User.class)
                             .forEach(user -> {
-                                // TODO: Don't set bank and accont number null if user is admin.
+                                // TODO: Don't set bank and account number null if user is admin.
                                 user.setPassword(null);
                                 user.setBankName(null);
                                 user.setAccountNumber(null);
@@ -62,7 +76,6 @@ public class UserService {
                 .map(unused -> {
                     try {
                         String hashedPassword = BCrypt.withDefaults().hashToString(12, user.getPassword().toCharArray());
-
                         Integer userId = context.insertInto(POKER_USER)
                                 .set(POKER_USER.EMAIL, user.getEmail())
                                 .set(POKER_USER.USERNAME, user.getUsername())
@@ -113,4 +126,5 @@ public class UserService {
                     return generateJWT(user.getUserId(), user.getRole().name());
                 });
     }
+
 }

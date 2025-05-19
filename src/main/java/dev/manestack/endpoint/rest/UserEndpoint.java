@@ -2,10 +2,13 @@ package dev.manestack.endpoint.rest;
 
 import dev.manestack.service.UserService;
 import dev.manestack.service.user.User;
+import io.quarkus.security.Authenticated;
+import io.quarkus.security.identity.CurrentIdentityAssociation;
 import io.smallrye.mutiny.Uni;
 import io.vertx.core.json.JsonObject;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
+import org.eclipse.microprofile.jwt.JsonWebToken;
 
 import java.util.List;
 
@@ -13,6 +16,8 @@ import java.util.List;
 public class UserEndpoint {
     @Inject
     UserService userService;
+    @Inject
+    CurrentIdentityAssociation identity;
 
     @POST
     @Path("/login")
@@ -39,6 +44,13 @@ public class UserEndpoint {
                     response.put("token", token);
                     return response;
                 });
+    }
+
+    @GET
+    @Path("/me")
+    public Uni<User> fetchUserFromToken() {
+        return identity.getDeferredIdentity()
+                .chain(identity -> userService.fetchUser(Integer.parseInt(identity.getPrincipal().getName())));
     }
 
     @GET
