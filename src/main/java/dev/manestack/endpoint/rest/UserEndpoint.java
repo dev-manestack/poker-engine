@@ -1,6 +1,7 @@
 package dev.manestack.endpoint.rest;
 
 import dev.manestack.service.UserService;
+import dev.manestack.service.user.Deposit;
 import dev.manestack.service.user.User;
 import io.quarkus.security.Authenticated;
 import io.quarkus.security.identity.CurrentIdentityAssociation;
@@ -15,9 +16,9 @@ import java.util.List;
 @Path("/api/v1/user")
 public class UserEndpoint {
     @Inject
-    UserService userService;
-    @Inject
     CurrentIdentityAssociation identity;
+    @Inject
+    UserService userService;
 
     @POST
     @Path("/login")
@@ -57,5 +58,12 @@ public class UserEndpoint {
     @Path("/search")
     public Uni<List<User>> searchUsers(@QueryParam("username") @DefaultValue("") String username) {
         return userService.searchUsers(username);
+    }
+
+    @GET
+    @Path("/deposit")
+    public Uni<List<Deposit>> fetchMyDeposits() {
+        return identity.getDeferredIdentity()
+                .chain(identity -> userService.fetchDeposits(Integer.parseInt(identity.getPrincipal().getName()), null));
     }
 }
