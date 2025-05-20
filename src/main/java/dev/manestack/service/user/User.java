@@ -13,6 +13,7 @@ public class User {
     private String bankName;
     private String accountNumber;
     private String password;
+    private UserBalance userBalance;
 
     public int getUserId() {
         return userId;
@@ -102,6 +103,14 @@ public class User {
         if (password == null || password.isEmpty()) {
             throw new IllegalArgumentException("Password is required");
         }
+    }
+
+    public UserBalance getUserBalance() {
+        return userBalance;
+    }
+
+    public void setUserBalance(UserBalance userBalance) {
+        this.userBalance = userBalance;
     }
 
     public enum Role {

@@ -285,7 +285,8 @@ public class UserService {
                     } else {
                         throw new RuntimeException("Failed to create withdrawal");
                     }
-                });
+                })
+                .call(unused -> lockUserBalance(userId, withdrawal.getAmount()));
     }
 
     public Uni<Withdrawal> approveWithdrawal(Integer agentId, Long withdrawalId) {
@@ -304,7 +305,7 @@ public class UserService {
                             .returning()
                             .fetchOneInto(Withdrawal.class);
                 })
-                .call(withdrawal -> incrementBalance(withdrawal.getUserId(), -withdrawal.getAmount()));
+                .call(withdrawal -> unlockUserBalance(withdrawal.getUserId(), withdrawal.getAmount(), false));
     }
 
     public Uni<UserBalance> fetchUserBalance(Integer userId) {
@@ -324,6 +325,40 @@ public class UserService {
                         return newUserBalance;
                     }
                 });
+    }
+
+    private Uni<Void> lockUserBalance(Integer userId, int amount) {
+        return fetchUserBalance(userId)
+                .map(userBalance -> {
+                    if (userBalance.getBalance() < amount) {
+                        throw new RuntimeException("Insufficient balance");
+                    }
+                    return context.update(POKER_USER_BALANCE)
+                            .set(POKER_USER_BALANCE.LOCKED_AMOUNT, userBalance.getLockedAmount() + amount)
+                            .set(POKER_USER_BALANCE.BALANCE, userBalance.getBalance() - amount)
+                            .where(POKER_USER_BALANCE.USER_ID.eq(userId))
+                            .execute();
+                })
+                .replaceWithVoid();
+    }
+
+    private Uni<Void> unlockUserBalance(Integer userId, int amount, boolean isCancelled) {
+        return fetchUserBalance(userId)
+                .map(userBalance -> {
+                    if (isCancelled) {
+                        return context.update(POKER_USER_BALANCE)
+                                .set(POKER_USER_BALANCE.LOCKED_AMOUNT, userBalance.getLockedAmount() - amount)
+                                .set(POKER_USER_BALANCE.BALANCE, userBalance.getBalance() + amount)
+                                .where(POKER_USER_BALANCE.USER_ID.eq(userId))
+                                .execute();
+                    } else {
+                        return context.update(POKER_USER_BALANCE)
+                                .set(POKER_USER_BALANCE.LOCKED_AMOUNT, userBalance.getLockedAmount() - amount)
+                                .where(POKER_USER_BALANCE.USER_ID.eq(userId))
+                                .execute();
+                    }
+                })
+                .replaceWithVoid();
     }
 
     private Uni<UserBalance> incrementBalance(Integer userId, int amount) {

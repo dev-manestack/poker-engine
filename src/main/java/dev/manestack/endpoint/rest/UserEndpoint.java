@@ -52,7 +52,12 @@ public class UserEndpoint {
     @Path("/me")
     public Uni<User> fetchUserFromToken() {
         return identity.getDeferredIdentity()
-                .chain(identity -> userService.fetchUser(Integer.parseInt(identity.getPrincipal().getName())));
+                .chain(identity -> userService.fetchUser(Integer.parseInt(identity.getPrincipal().getName())))
+                .chain(user -> userService.fetchUserBalance(user.getUserId())
+                        .map(userBalance -> {
+                            user.setUserBalance(userBalance);
+                            return user;
+                        }));
     }
 
     @GET
