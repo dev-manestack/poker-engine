@@ -2,11 +2,14 @@ package dev.manestack.service;
 
 import at.favre.lib.crypto.bcrypt.BCrypt;
 import dev.manestack.jooq.generated.tables.records.PokerDepositRecord;
+import dev.manestack.jooq.generated.tables.records.PokerWithdrawalRecord;
 import dev.manestack.service.user.Deposit;
 import dev.manestack.service.user.User;
 import dev.manestack.service.user.UserBalance;
+import dev.manestack.service.user.Withdrawal;
 import io.smallrye.jwt.build.Jwt;
 import io.smallrye.mutiny.Uni;
+import io.vertx.core.json.JsonObject;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.ForbiddenException;
@@ -21,12 +24,16 @@ import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Vector;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import static dev.manestack.jooq.generated.Tables.*;
 
 @ApplicationScoped
 public class UserService {
     private static final Logger LOG = Logger.getLogger(UserService.class);
+    private final ExecutorService QUERY_THREADS = Executors.newFixedThreadPool(3);
 
     @Inject
     DSLContext context;
@@ -45,6 +52,7 @@ public class UserService {
 
     public Uni<User> fetchUser(Integer userId) {
         return Uni.createFrom().voidItem()
+                .emitOn(QUERY_THREADS)
                 .map(unused -> context.selectFrom(POKER_USER)
                         .where(POKER_USER.USER_ID.eq(userId))
                         .fetchOneInto(User.class))
@@ -60,6 +68,7 @@ public class UserService {
 
     public Uni<List<User>> searchUsers(String username) {
         return Uni.createFrom().voidItem()
+                .emitOn(QUERY_THREADS)
                 .map(unused -> {
                     List<User> userList = new ArrayList<>();
                     context.selectFrom(POKER_USER)
@@ -78,6 +87,7 @@ public class UserService {
 
     public Uni<String> registerUser(User user) {
         return Uni.createFrom().voidItem()
+                .emitOn(QUERY_THREADS)
                 .invoke(user::validateRegister)
                 .map(unused -> {
                     try {
@@ -117,6 +127,7 @@ public class UserService {
 
     public Uni<String> loginUser(String email, String password) {
         return Uni.createFrom().voidItem()
+                .emitOn(QUERY_THREADS)
                 .map(unused -> {
                     User user = context.selectFrom(POKER_USER)
                             .where(POKER_USER.EMAIL.eq(email))
@@ -138,6 +149,7 @@ public class UserService {
      */
     public Uni<List<Deposit>> fetchDeposits(Integer userId, Integer adminId) {
         return Uni.createFrom().voidItem()
+                .emitOn(QUERY_THREADS)
                 .map(unused -> {
                     List<Deposit> deposits = new ArrayList<>();
                     if (userId != null) {
@@ -156,8 +168,7 @@ public class UserService {
                                     Deposit deposit = new Deposit(record);
                                     deposits.add(deposit);
                                 });
-                    }
-                    else {
+                    } else {
                         context.selectFrom(POKER_DEPOSIT)
                                 .fetch()
                                 .forEach(record -> {
@@ -171,11 +182,7 @@ public class UserService {
 
     public Uni<Deposit> createDeposit(Integer adminId, Deposit deposit) {
         return fetchUser(adminId)
-                .invoke(adminUser -> {
-                    if (!User.Role.ADMIN.equals(adminUser.getRole())) {
-                        throw new ForbiddenException("User is not admin");
-                    }
-                })
+                .emitOn(QUERY_THREADS)
                 .chain(adminUser -> {
                     deposit.validate();
                     try {
@@ -210,8 +217,118 @@ public class UserService {
                 });
     }
 
-    public Uni<UserBalance> incrementBalance(Integer userId, int amount) {
+    public Uni<Withdrawal> fetchWithdrawalById(Long withdrawalId) {
         return Uni.createFrom().voidItem()
+                .emitOn(QUERY_THREADS)
+                .map(unused -> {
+                    PokerWithdrawalRecord record = context.selectFrom(POKER_WITHDRAWAL)
+                            .where(POKER_WITHDRAWAL.WITHDRAWAL_ID.eq(withdrawalId))
+                            .fetchOne();
+                    if (record != null) {
+                        return new Withdrawal(record);
+                    } else {
+                        throw new RuntimeException("Withdrawal not found");
+                    }
+                });
+    }
+
+    public Uni<List<Withdrawal>> fetchWithdrawals(Integer userId, Integer adminId) {
+        return Uni.createFrom().voidItem()
+                .emitOn(QUERY_THREADS)
+                .map(unused -> {
+                    List<Withdrawal> withdrawals = new ArrayList<>();
+                    if (userId != null) {
+                        context.selectFrom(POKER_WITHDRAWAL)
+                                .where(POKER_WITHDRAWAL.USER_ID.eq(userId))
+                                .fetch()
+                                .forEach(record -> {
+                                    Withdrawal withdrawal = new Withdrawal(record);
+                                    withdrawals.add(withdrawal);
+                                });
+                    } else if (adminId != null) {
+                        context.selectFrom(POKER_WITHDRAWAL)
+                                .where(POKER_WITHDRAWAL.APPROVED_BY.eq(adminId))
+                                .fetch()
+                                .forEach(record -> {
+                                    Withdrawal withdrawal = new Withdrawal(record);
+                                    withdrawals.add(withdrawal);
+                                });
+                    } else {
+                        context.selectFrom(POKER_WITHDRAWAL)
+                                .fetch()
+                                .forEach(record -> {
+                                    Withdrawal withdrawal = new Withdrawal(record);
+                                    withdrawals.add(withdrawal);
+                                });
+                    }
+                    return withdrawals;
+                });
+    }
+
+    public Uni<Withdrawal> createWithdrawal(Integer userId, Withdrawal withdrawal) {
+        return fetchUserBalance(userId)
+                .emitOn(QUERY_THREADS)
+                .map(userBalance -> {
+                    withdrawal.validate();
+                    if (withdrawal.getAmount() > userBalance.getBalance()) {
+                        throw new RuntimeException("Insufficient balance");
+                    }
+                    PokerWithdrawalRecord record = context.insertInto(POKER_WITHDRAWAL)
+                            .set(POKER_WITHDRAWAL.AMOUNT, withdrawal.getAmount())
+                            .set(POKER_WITHDRAWAL.USER_ID, userId)
+                            .set(POKER_WITHDRAWAL.CREATE_DATE, OffsetDateTime.now())
+                            .set(POKER_WITHDRAWAL.DETAILS, JSONB.valueOf(withdrawal.getDetails().encode()))
+                            .returning()
+                            .fetchOne();
+                    if (record != null) {
+                        return new Withdrawal(record);
+                    } else {
+                        throw new RuntimeException("Failed to create withdrawal");
+                    }
+                });
+    }
+
+    public Uni<Withdrawal> approveWithdrawal(Integer agentId, Long withdrawalId) {
+        return fetchWithdrawalById(withdrawalId)
+                .map(withdrawal -> {
+                    if (withdrawal.getApprovedBy() != null) {
+                        throw new RuntimeException("Withdrawal already approved");
+                    }
+                    if (withdrawal.getAmount() <= 0) {
+                        throw new RuntimeException("Invalid withdrawal amount");
+                    }
+                    return context.update(POKER_WITHDRAWAL)
+                            .set(POKER_WITHDRAWAL.APPROVED_BY, agentId)
+                            .set(POKER_WITHDRAWAL.APPROVE_DATE, OffsetDateTime.now())
+                            .where(POKER_WITHDRAWAL.WITHDRAWAL_ID.eq(withdrawalId))
+                            .returning()
+                            .fetchOneInto(Withdrawal.class);
+                })
+                .call(withdrawal -> incrementBalance(withdrawal.getUserId(), -withdrawal.getAmount()));
+    }
+
+    public Uni<UserBalance> fetchUserBalance(Integer userId) {
+        return Uni.createFrom().voidItem()
+                .emitOn(QUERY_THREADS)
+                .map(unused -> context.selectFrom(POKER_USER_BALANCE)
+                        .where(POKER_USER_BALANCE.USER_ID.eq(userId))
+                        .fetchOneInto(UserBalance.class))
+                .onItem().transform(userBalance -> {
+                    if (userBalance != null) {
+                        return userBalance;
+                    } else {
+                        UserBalance newUserBalance = new UserBalance();
+                        newUserBalance.setUserId(userId);
+                        newUserBalance.setBalance(0);
+                        newUserBalance.setLockedAmount(0);
+                        return newUserBalance;
+                    }
+                });
+    }
+
+    private Uni<UserBalance> incrementBalance(Integer userId, int amount) {
+        return Uni.createFrom().voidItem()
+                .emitOn(QUERY_THREADS)
                 .map(unused -> {
                     UserBalance userBalance = context.update(POKER_USER_BALANCE)
                             .set(POKER_USER_BALANCE.BALANCE, POKER_USER_BALANCE.BALANCE.add(amount))

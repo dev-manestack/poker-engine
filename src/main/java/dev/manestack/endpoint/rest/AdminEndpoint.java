@@ -2,18 +2,16 @@ package dev.manestack.endpoint.rest;
 
 import dev.manestack.service.UserService;
 import dev.manestack.service.user.Deposit;
-import io.quarkus.security.Authenticated;
+import dev.manestack.service.user.Withdrawal;
 import io.quarkus.security.identity.CurrentIdentityAssociation;
 import io.smallrye.mutiny.Uni;
+import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
-import jakarta.ws.rs.GET;
-import jakarta.ws.rs.POST;
-import jakarta.ws.rs.Path;
-import jakarta.ws.rs.QueryParam;
+import jakarta.ws.rs.*;
 
 import java.util.List;
 
-@Authenticated
+@RolesAllowed({"ADMIN"})
 @Path("/api/v1/admin")
 public class AdminEndpoint {
     @Inject
@@ -33,5 +31,19 @@ public class AdminEndpoint {
     public Uni<Deposit> createDeposit(Deposit deposit) {
         return identity.getDeferredIdentity()
                 .chain(identity -> userService.createDeposit(Integer.parseInt(identity.getPrincipal().getName()), deposit));
+    }
+
+    @GET
+    @Path("/withdrawal")
+    public Uni<List<Withdrawal>> fetchWithdrawals(@QueryParam("userId") Integer userId, @QueryParam("adminId") Integer adminId) {
+        return identity.getDeferredIdentity()
+                .chain(identity -> userService.fetchWithdrawals(userId, adminId));
+    }
+
+    @PUT
+    @Path("/withdrawal/approve")
+    public Uni<Withdrawal> approveWithdrawal(@QueryParam("withdrawalId") Long withdrawalId) {
+        return identity.getDeferredIdentity()
+                .chain(identity -> userService.approveWithdrawal(Integer.parseInt(identity.getPrincipal().getName()), withdrawalId));
     }
 }

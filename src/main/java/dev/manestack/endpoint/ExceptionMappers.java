@@ -27,6 +27,7 @@ public class ExceptionMappers {
         if (throwable.getCause() != null) {
             message = message + " - " + throwable.getCause().getMessage();
         }
+        LOG.errorv(throwable, "ERROR: {0}", throwable);
         return RestResponse.status(status, new JsonObject()
                 .put("status", "FAILED")
                 .put("errorCode", status.getStatusCode())

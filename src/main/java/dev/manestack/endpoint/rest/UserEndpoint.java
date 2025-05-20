@@ -3,13 +3,13 @@ package dev.manestack.endpoint.rest;
 import dev.manestack.service.UserService;
 import dev.manestack.service.user.Deposit;
 import dev.manestack.service.user.User;
+import dev.manestack.service.user.Withdrawal;
 import io.quarkus.security.Authenticated;
 import io.quarkus.security.identity.CurrentIdentityAssociation;
 import io.smallrye.mutiny.Uni;
 import io.vertx.core.json.JsonObject;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
-import org.eclipse.microprofile.jwt.JsonWebToken;
 
 import java.util.List;
 
@@ -47,6 +47,7 @@ public class UserEndpoint {
                 });
     }
 
+    @Authenticated
     @GET
     @Path("/me")
     public Uni<User> fetchUserFromToken() {
@@ -60,10 +61,27 @@ public class UserEndpoint {
         return userService.searchUsers(username);
     }
 
+    @Authenticated
     @GET
     @Path("/deposit")
     public Uni<List<Deposit>> fetchMyDeposits() {
         return identity.getDeferredIdentity()
                 .chain(identity -> userService.fetchDeposits(Integer.parseInt(identity.getPrincipal().getName()), null));
+    }
+
+    @Authenticated
+    @GET
+    @Path("/withdrawal")
+    public Uni<List<Withdrawal>> fetchMyWithdrawals() {
+        return identity.getDeferredIdentity()
+                .chain(identity -> userService.fetchWithdrawals(Integer.parseInt(identity.getPrincipal().getName()), null));
+    }
+
+    @Authenticated
+    @POST
+    @Path("/withdrawal")
+    public Uni<Withdrawal> createWithdrawal(Withdrawal withdrawal) {
+        return identity.getDeferredIdentity()
+                .chain(identity -> userService.createWithdrawal(Integer.parseInt(identity.getPrincipal().getName()), withdrawal));
     }
 }
