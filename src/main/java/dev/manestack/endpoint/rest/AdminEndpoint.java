@@ -21,9 +21,9 @@ public class AdminEndpoint {
 
     @GET
     @Path("/deposit")
-    public Uni<List<Deposit>> fetchDeposits(@QueryParam("userId") Integer userId, @QueryParam("adminId") Integer adminId) {
+    public Uni<List<Deposit>> fetchDeposits(@QueryParam("userId") Integer userId) {
         return identity.getDeferredIdentity()
-                .chain(identity -> userService.fetchDeposits(userId, adminId));
+                .chain(identity -> userService.fetchDeposits(userId));
     }
 
     @POST
@@ -35,9 +35,9 @@ public class AdminEndpoint {
 
     @GET
     @Path("/withdrawal")
-    public Uni<List<Withdrawal>> fetchWithdrawals(@QueryParam("userId") Integer userId, @QueryParam("adminId") Integer adminId) {
+    public Uni<List<Withdrawal>> fetchWithdrawals(@QueryParam("userId") Integer userId) {
         return identity.getDeferredIdentity()
-                .chain(identity -> userService.fetchWithdrawals(userId, adminId));
+                .chain(identity -> userService.fetchWithdrawals(userId));
     }
 
     @PUT

@@ -13,6 +13,7 @@ public class Withdrawal {
     private Integer approvedBy;
     private OffsetDateTime approveDate;
     private JsonObject details;
+    private User user;
 
     public Withdrawal() {
     }
@@ -93,5 +94,13 @@ public class Withdrawal {
 
     public void setDetails(JsonObject details) {
         this.details = details;
+    }
+
+    public User getUser() {
+        return user;
+    }
+
+    public void setUser(User user) {
+        this.user = user;
     }
 }

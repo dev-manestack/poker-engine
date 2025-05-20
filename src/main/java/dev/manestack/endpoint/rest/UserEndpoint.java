@@ -71,7 +71,7 @@ public class UserEndpoint {
     @Path("/deposit")
     public Uni<List<Deposit>> fetchMyDeposits() {
         return identity.getDeferredIdentity()
-                .chain(identity -> userService.fetchDeposits(Integer.parseInt(identity.getPrincipal().getName()), null));
+                .chain(identity -> userService.fetchDeposits(Integer.parseInt(identity.getPrincipal().getName())));
     }
 
     @Authenticated
@@ -79,7 +79,7 @@ public class UserEndpoint {
     @Path("/withdrawal")
     public Uni<List<Withdrawal>> fetchMyWithdrawals() {
         return identity.getDeferredIdentity()
-                .chain(identity -> userService.fetchWithdrawals(Integer.parseInt(identity.getPrincipal().getName()), null));
+                .chain(identity -> userService.fetchWithdrawals(Integer.parseInt(identity.getPrincipal().getName())));
     }
 
     @Authenticated

@@ -15,8 +15,8 @@ import jakarta.inject.Inject;
 import jakarta.ws.rs.ForbiddenException;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.logging.Logger;
-import org.jooq.DSLContext;
-import org.jooq.JSONB;
+import org.jooq.*;
+import org.jooq.Record;
 import org.jooq.exception.IntegrityConstraintViolationException;
 import org.postgresql.util.PSQLException;
 
@@ -147,35 +147,25 @@ public class UserService {
     /*
      * Details Methods
      */
-    public Uni<List<Deposit>> fetchDeposits(Integer userId, Integer adminId) {
+    public Uni<List<Deposit>> fetchDeposits(Integer userId) {
         return Uni.createFrom().voidItem()
                 .emitOn(QUERY_THREADS)
                 .map(unused -> {
                     List<Deposit> deposits = new ArrayList<>();
+                    SelectConditionStep<Record> selectStep = context.select()
+                            .from(POKER_DEPOSIT)
+                            .leftJoin(POKER_USER).on(POKER_DEPOSIT.USER_ID.eq(POKER_USER.USER_ID))
+                            .where(POKER_USER.USER_ID.isNotNull());
                     if (userId != null) {
-                        context.selectFrom(POKER_DEPOSIT)
-                                .where(POKER_DEPOSIT.USER_ID.eq(userId))
-                                .fetch()
-                                .forEach(record -> {
-                                    Deposit deposit = new Deposit(record);
-                                    deposits.add(deposit);
-                                });
-                    } else if (adminId != null) {
-                        context.selectFrom(POKER_DEPOSIT)
-                                .where(POKER_DEPOSIT.ADMIN_ID.eq(adminId))
-                                .fetch()
-                                .forEach(record -> {
-                                    Deposit deposit = new Deposit(record);
-                                    deposits.add(deposit);
-                                });
-                    } else {
-                        context.selectFrom(POKER_DEPOSIT)
-                                .fetch()
-                                .forEach(record -> {
-                                    Deposit deposit = new Deposit(record);
-                                    deposits.add(deposit);
-                                });
+                        selectStep = selectStep.and(POKER_DEPOSIT.USER_ID.eq(userId));
                     }
+                    selectStep.fetch().forEach(record -> {
+                        PokerDepositRecord depositRecord = record.into(POKER_DEPOSIT);
+                        Deposit deposit = new Deposit(depositRecord);
+                        User user = record.into(POKER_USER).into(User.class);
+                        deposit.setUser(user);
+                        deposits.add(deposit);
+                    });
                     return deposits;
                 });
     }
@@ -232,35 +222,25 @@ public class UserService {
                 });
     }
 
-    public Uni<List<Withdrawal>> fetchWithdrawals(Integer userId, Integer adminId) {
+    public Uni<List<Withdrawal>> fetchWithdrawals(Integer userId) {
         return Uni.createFrom().voidItem()
                 .emitOn(QUERY_THREADS)
                 .map(unused -> {
                     List<Withdrawal> withdrawals = new ArrayList<>();
+                    SelectConditionStep<Record> selectStep = context.select()
+                            .from(POKER_WITHDRAWAL)
+                            .leftJoin(POKER_USER).on(POKER_WITHDRAWAL.USER_ID.eq(POKER_USER.USER_ID))
+                            .where(POKER_USER.USER_ID.isNotNull());
                     if (userId != null) {
-                        context.selectFrom(POKER_WITHDRAWAL)
-                                .where(POKER_WITHDRAWAL.USER_ID.eq(userId))
-                                .fetch()
-                                .forEach(record -> {
-                                    Withdrawal withdrawal = new Withdrawal(record);
-                                    withdrawals.add(withdrawal);
-                                });
-                    } else if (adminId != null) {
-                        context.selectFrom(POKER_WITHDRAWAL)
-                                .where(POKER_WITHDRAWAL.APPROVED_BY.eq(adminId))
-                                .fetch()
-                                .forEach(record -> {
-                                    Withdrawal withdrawal = new Withdrawal(record);
-                                    withdrawals.add(withdrawal);
-                                });
-                    } else {
-                        context.selectFrom(POKER_WITHDRAWAL)
-                                .fetch()
-                                .forEach(record -> {
-                                    Withdrawal withdrawal = new Withdrawal(record);
-                                    withdrawals.add(withdrawal);
-                                });
+                        selectStep = selectStep.and(POKER_WITHDRAWAL.USER_ID.eq(userId));
                     }
+                    selectStep.fetch().forEach(record -> {
+                        PokerWithdrawalRecord withdrawalRecord = record.into(POKER_WITHDRAWAL);
+                        Withdrawal withdrawal = new Withdrawal(withdrawalRecord);
+                        User user = record.into(POKER_USER).into(User.class);
+                        withdrawal.setUser(user);
+                        withdrawals.add(withdrawal);
+                    });
                     return withdrawals;
                 });
     }

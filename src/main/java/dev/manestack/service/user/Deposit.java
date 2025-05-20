@@ -13,6 +13,7 @@ public class Deposit {
     private DepositType type;
     private JsonObject details;
     private OffsetDateTime createDate;
+    private User user;
 
     public Deposit() {
     }
@@ -96,6 +97,14 @@ public class Deposit {
 
     public void setDetails(JsonObject details) {
         this.details = details;
+    }
+
+    public User getUser() {
+        return user;
+    }
+
+    public void setUser(User user) {
+        this.user = user;
     }
 
     public enum DepositType {
