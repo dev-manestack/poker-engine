@@ -1,101 +1,31 @@
 package dev.manestack.endpoint.ws;
 
-import dev.manestack.util.Utilities;
-import io.smallrye.jwt.auth.principal.JWTParser;
-import jakarta.enterprise.context.ApplicationScoped;
+import dev.manestack.service.GameService;
+import dev.manestack.service.socket.WebsocketEvent;
+import io.quarkus.websockets.next.*;
 import jakarta.inject.Inject;
-import jakarta.websocket.*;
-import jakarta.websocket.server.PathParam;
-import jakarta.websocket.server.ServerEndpoint;
 import org.jboss.logging.Logger;
 
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-
-@ServerEndpoint("/ws/table/{tableId}")
-@ApplicationScoped
+@WebSocket(path = "/table")
 public class TableSocket {
     private static final Logger LOG = Logger.getLogger(TableSocket.class);
-    private final Map<String, Session> sessions = new ConcurrentHashMap<>();
-
     @Inject
-    JWTParser parser;
+    WebSocketConnection connection;
+    @Inject
+    GameService gameService;
 
     @OnOpen
-    public void onOpen(Session session, @PathParam("tableId") String tableId) {
-        Map<String, String> queryParams = Utilities.parseQuery(session.getQueryString());
-        String userId = parseUserId(queryParams.get("accessToken"));
-        if (userId == null) {
-            LOG.error("User ID is missing in the query parameters.");
-            try {
-                session.close();
-            } catch (Exception ignored) {}
-            return;
-        }
-        System.out.println(userId);
-        sessions.put(userId, session);
-        LOG.infov("User {0} connected to table {1}", userId, tableId);
+    public void onOpen() {
+        gameService.handleOnConnectEvent(connection.id(), connection);
     }
 
     @OnClose
-    public void onClose(Session session, @PathParam("tableId") String tableId) {
-        Map<String, String> queryParams = Utilities.parseQuery(session.getQueryString());
-        String userId = parseUserId(queryParams.get("accessToken"));
-        if (userId == null) {
-            LOG.error("User ID is missing in the query parameters.");
-            try {
-                session.close();
-            } catch (Exception ignored) {}
-            return;
-        }
-        sessions.remove(userId);
-        LOG.infov("User {0} disconnected from table {1}", userId, tableId);
+    public void onClose() {
+        gameService.handleOnCloseEvent(connection.id());
     }
 
-    @OnError
-    public void onError(Session session, @PathParam("tableId") String tableId, Throwable throwable) {
-        Map<String, String> queryParams = Utilities.parseQuery(session.getQueryString());
-        String userId = parseUserId(queryParams.get("accessToken"));
-        if (userId == null) {
-            LOG.error("User ID is missing in the query parameters.");
-            try {
-                session.close();
-            } catch (Exception ignored) {}
-            return;
-        }
-        LOG.errorv("Error occurred for user {0} on table {1}: {2}", userId, tableId, throwable.getMessage());
-    }
-
-    @OnMessage
-    public void onMessage(Session session, String message, @PathParam("tableId") String tableId) {
-        Map<String, String> queryParams = Utilities.parseQuery(session.getQueryString());
-        String userId = parseUserId(queryParams.get("accessToken"));
-        if (userId == null) {
-            LOG.error("User ID is missing in the query parameters.");
-            try {
-                session.close();
-            } catch (Exception ignored) {}
-            return;
-        }
-        LOG.infov("Received message from user {0} on table {1}: {2}", userId, tableId, message);
-    }
-
-    private void broadcast(String message) {
-        sessions.values().forEach(s -> {
-            s.getAsyncRemote().sendObject(message, result ->  {
-                if (result.getException() != null) {
-                    System.out.println("Unable to send message: " + result.getException());
-                }
-            });
-        });
-    }
-
-    private String parseUserId(String accessToken) {
-        try {
-            return parser.parse(accessToken).getSubject();
-        } catch (Exception e) {
-            LOG.error("Failed to parse user ID from access token: " + e.getMessage());
-            return null;
-        }
+    @OnTextMessage
+    public void onTextMessage(WebsocketEvent websocketEvent) {
+        gameService.emitMessageToHandler(connection.id(), websocketEvent);
     }
 }

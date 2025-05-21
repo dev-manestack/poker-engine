@@ -2,8 +2,16 @@ package dev.manestack.service;
 
 import dev.manestack.jooq.generated.tables.records.PokerTableRecord;
 import dev.manestack.service.poker.core.GameTable;
+import dev.manestack.service.socket.WebsocketEvent;
+import dev.manestack.service.socket.WebsocketSession;
+import io.quarkus.runtime.ShutdownEvent;
 import io.quarkus.runtime.StartupEvent;
+import io.quarkus.websockets.next.WebSocketConnection;
+import io.smallrye.jwt.auth.principal.JWTParser;
+import io.smallrye.mutiny.Multi;
 import io.smallrye.mutiny.Uni;
+import io.smallrye.mutiny.subscription.Cancellable;
+import io.smallrye.mutiny.subscription.MultiEmitter;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.event.Observes;
 import jakarta.inject.Inject;
@@ -19,16 +27,25 @@ import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-import static dev.manestack.jooq.generated.Tables.*;
+import static dev.manestack.jooq.generated.Tables.POKER_TABLE;
 
 @ApplicationScoped
 public class GameService {
     private static final Logger LOG = Logger.getLogger(UserService.class);
     private final ExecutorService QUERY_THREADS = Executors.newFixedThreadPool(3);
-    public final Map<Long, GameTable> TABLES = new HashMap<>();
+    private final ExecutorService GAMEPLAY_THREAD = Executors.newFixedThreadPool(3);
+    private final Map<Long, GameTable> TABLES = new HashMap<>();
+    private final Map<String, WebsocketSession> SOCKET_SESSIONS = new HashMap<>();
+
+    private MultiEmitter<? super WebsocketEvent> SOCKET_HANDLER_EMITTER;
+    private Cancellable SOCKET_HANDLER_tASK;
 
     @Inject
     DSLContext context;
+    @Inject
+    JWTParser jwtParser;
+    @Inject
+    UserService userService;
 
     public void init(@Observes StartupEvent ignored) {
         fetchTables().invoke(tables -> {
@@ -38,8 +55,95 @@ public class GameService {
                 })
                 .subscribe().with(unused -> {
                 });
+
+        Multi<WebsocketEvent> socketHandlerMulti = Multi.createFrom().emitter(em -> {
+            SOCKET_HANDLER_EMITTER = em;
+        });
+
+        SOCKET_HANDLER_tASK = socketHandlerMulti
+                .emitOn(GAMEPLAY_THREAD)
+                .call(this::handleMessage)
+                .subscribe().with(unused -> {
+                    LOG.infov("Socket opened");
+                }, failure -> {
+                    LOG.errorv("Socket open failed: {0}", failure.getMessage());
+                }, () -> {
+                    LOG.infov("Socket open completed");
+                });
     }
 
+    public void shutdown(@Observes ShutdownEvent ignored) {
+        if (SOCKET_HANDLER_tASK != null) {
+            SOCKET_HANDLER_tASK.cancel();
+        }
+        if (SOCKET_HANDLER_EMITTER != null) {
+            SOCKET_HANDLER_EMITTER.complete();
+        }
+        QUERY_THREADS.shutdown();
+        GAMEPLAY_THREAD.shutdown();
+        LOG.infov("GameService shutdown completed");
+    }
+
+    /*
+     * Socket Events
+     */
+
+    public void handleOnConnectEvent(String id, WebSocketConnection connection) {
+        LOG.infov("Received connection event for {0}", id);
+        SOCKET_SESSIONS.put(id, new WebsocketSession(id, connection));
+    }
+
+    public void handleOnCloseEvent(String id) {
+        LOG.infov("Received close event for {0}", id);
+        WebsocketSession session = SOCKET_SESSIONS.remove(id);
+    }
+
+    public void emitMessageToHandler(String id, WebsocketEvent event) {
+        LOG.infov("Emitting message event for {0}: {1}", id, event);
+        event.setId(id);
+        SOCKET_HANDLER_EMITTER.emit(event);
+    }
+
+    private Uni<Void> handleMessage(WebsocketEvent event) {
+        return Uni.createFrom().voidItem()
+                .call(() -> {
+                    LOG.infov("Handling event {0}: {1}", event.getId(), event);
+                    WebsocketSession session = SOCKET_SESSIONS.get(event.getId());
+                    if (session == null) {
+                        LOG.errorv("Session not found for {0}", event.getId());
+                        return Uni.createFrom().voidItem();
+                    }
+                    switch (event.getType()) {
+                        case "AUTH" -> {
+                            LOG.infov("Received auth event for {0}: {1}", event.getId(), event.getData());
+                            String accessToken = event.getData().getString("accessToken");
+                            try {
+                                Integer userId = Integer.parseInt(jwtParser.parse(accessToken).getSubject());
+                                return userService.fetchUser(userId)
+                                        .invoke(session::setUser)
+                                        .invoke(() -> LOG.infov("User {0} authenticated", userId));
+                            } catch (Exception e) {
+                                LOG.errorv("Invalid token: {0}", e.getMessage());
+                            }
+                        }
+                        case "GAME" -> {
+                            LOG.infov("Received game event for {0}: {1}", event.getId(), event.getData());
+                        }
+                        default -> {
+                            LOG.infov("Received unknown event for {0}: {1}", event.getId(), event.getData());
+                        }
+                    }
+                    return Uni.createFrom().voidItem();
+                })
+                .onFailure().recoverWithUni(throwable -> {
+                    LOG.errorv("Error handling event {0}: {1}", event.getId(), throwable.getMessage());
+                    return Uni.createFrom().voidItem();
+                });
+    }
+
+    /*
+     * CRUD Operations
+     */
     public Uni<List<GameTable>> fetchTables() {
         return Uni.createFrom().voidItem()
                 .emitOn(QUERY_THREADS)
