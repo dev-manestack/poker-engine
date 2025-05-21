@@ -2,6 +2,7 @@ package dev.manestack.endpoint.rest;
 
 import dev.manestack.service.UserService;
 import dev.manestack.service.user.Deposit;
+import dev.manestack.service.user.User;
 import dev.manestack.service.user.Withdrawal;
 import io.quarkus.security.identity.CurrentIdentityAssociation;
 import io.smallrye.mutiny.Uni;
@@ -18,6 +19,12 @@ public class AdminEndpoint {
     CurrentIdentityAssociation identity;
     @Inject
     UserService userService;
+
+    @GET
+    @Path("/user/search")
+    public Uni<List<User>> searchUsers(@QueryParam("username") @DefaultValue("") String username) {
+        return userService.searchUsers(username, true);
+    }
 
     @GET
     @Path("/deposit")

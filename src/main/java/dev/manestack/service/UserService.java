@@ -66,7 +66,7 @@ public class UserService {
                 });
     }
 
-    public Uni<List<User>> searchUsers(String username) {
+    public Uni<List<User>> searchUsers(String username, boolean isAdmin) {
         return Uni.createFrom().voidItem()
                 .emitOn(QUERY_THREADS)
                 .map(unused -> {
@@ -75,10 +75,11 @@ public class UserService {
                             .where(POKER_USER.USERNAME.likeIgnoreCase("%" + username + "%"))
                             .fetchInto(User.class)
                             .forEach(user -> {
-                                // TODO: Don't set bank and account number null if user is admin.
-                                user.setPassword(null);
-                                user.setBankName(null);
-                                user.setAccountNumber(null);
+                                if (!isAdmin) {
+                                    user.setPassword(null);
+                                    user.setBankName(null);
+                                    user.setAccountNumber(null);
+                                }
                                 userList.add(user);
                             });
                     return userList;

@@ -63,7 +63,7 @@ public class UserEndpoint {
     @GET
     @Path("/search")
     public Uni<List<User>> searchUsers(@QueryParam("username") @DefaultValue("") String username) {
-        return userService.searchUsers(username);
+        return userService.searchUsers(username, false);
     }
 
     @Authenticated
