@@ -1,6 +1,8 @@
 package dev.manestack.endpoint.rest;
 
+import dev.manestack.service.GameService;
 import dev.manestack.service.UserService;
+import dev.manestack.service.poker.core.GameTable;
 import dev.manestack.service.user.Deposit;
 import dev.manestack.service.user.User;
 import dev.manestack.service.user.Withdrawal;
@@ -19,6 +21,8 @@ public class AdminEndpoint {
     CurrentIdentityAssociation identity;
     @Inject
     UserService userService;
+    @Inject
+    GameService gameService;
 
     @GET
     @Path("/user/search")
@@ -52,5 +56,33 @@ public class AdminEndpoint {
     public Uni<Withdrawal> approveWithdrawal(@QueryParam("withdrawalId") Long withdrawalId) {
         return identity.getDeferredIdentity()
                 .chain(identity -> userService.approveWithdrawal(Integer.parseInt(identity.getPrincipal().getName()), withdrawalId));
+    }
+
+    @GET
+    @Path("/table")
+    public Uni<List<GameTable>> fetchTables() {
+        return identity.getDeferredIdentity()
+                .chain(identity -> gameService.fetchTables());
+    }
+
+    @POST
+    @Path("/table")
+    public Uni<GameTable> createTable(GameTable gameTable) {
+        return identity.getDeferredIdentity()
+                .chain(identity -> gameService.createTable(Integer.parseInt(identity.getPrincipal().getName()), gameTable));
+    }
+
+    @PATCH
+    @Path("/table")
+    public Uni<GameTable> updateTable(GameTable gameTable) {
+        return identity.getDeferredIdentity()
+                .chain(identity -> gameService.updateTable(gameTable));
+    }
+
+    @DELETE
+    @Path("/table")
+    public Uni<Void> deleteTable(@QueryParam("tableId") Long tableId) {
+        return identity.getDeferredIdentity()
+                .chain(identity -> gameService.deleteTable(tableId, Integer.parseInt(identity.getPrincipal().getName())));
     }
 }

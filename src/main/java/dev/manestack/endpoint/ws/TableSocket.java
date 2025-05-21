@@ -32,6 +32,7 @@ public class TableSocket {
             } catch (Exception ignored) {}
             return;
         }
+        System.out.println(userId);
         sessions.put(userId, session);
         LOG.infov("User {0} connected to table {1}", userId, tableId);
     }
@@ -90,6 +91,11 @@ public class TableSocket {
     }
 
     private String parseUserId(String accessToken) {
-        return accessToken;
+        try {
+            return parser.parse(accessToken).getSubject();
+        } catch (Exception e) {
+            LOG.error("Failed to parse user ID from access token: " + e.getMessage());
+            return null;
+        }
     }
 }

@@ -9,14 +9,14 @@ import dev.manestack.service.user.UserBalance;
 import dev.manestack.service.user.Withdrawal;
 import io.smallrye.jwt.build.Jwt;
 import io.smallrye.mutiny.Uni;
-import io.vertx.core.json.JsonObject;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
-import jakarta.ws.rs.ForbiddenException;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.logging.Logger;
-import org.jooq.*;
+import org.jooq.DSLContext;
+import org.jooq.JSONB;
 import org.jooq.Record;
+import org.jooq.SelectConditionStep;
 import org.jooq.exception.IntegrityConstraintViolationException;
 import org.postgresql.util.PSQLException;
 
@@ -24,7 +24,6 @@ import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Vector;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
