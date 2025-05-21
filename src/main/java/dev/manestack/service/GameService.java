@@ -122,6 +122,7 @@ public class GameService {
         return Uni.createFrom().voidItem()
                 .emitOn(QUERY_THREADS)
                 .map(unused -> {
+                    LOG.infov("User {0} is deleting table {1}", userId, tableId);
                     context.deleteFrom(POKER_TABLE)
                             .where(POKER_TABLE.TABLE_ID.eq(tableId))
                             .execute();
