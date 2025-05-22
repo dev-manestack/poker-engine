@@ -6,12 +6,14 @@ import dev.manestack.service.socket.WebsocketEvent;
 import dev.manestack.service.socket.WebsocketSession;
 import io.quarkus.runtime.ShutdownEvent;
 import io.quarkus.runtime.StartupEvent;
+import io.quarkus.websockets.next.OpenConnections;
 import io.quarkus.websockets.next.WebSocketConnection;
 import io.smallrye.jwt.auth.principal.JWTParser;
 import io.smallrye.mutiny.Multi;
 import io.smallrye.mutiny.Uni;
 import io.smallrye.mutiny.subscription.Cancellable;
 import io.smallrye.mutiny.subscription.MultiEmitter;
+import io.vertx.core.json.JsonObject;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.event.Observes;
 import jakarta.inject.Inject;
@@ -24,6 +26,7 @@ import java.time.OffsetDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -46,6 +49,8 @@ public class GameService {
     JWTParser jwtParser;
     @Inject
     UserService userService;
+    @Inject
+    OpenConnections openConnections;
 
     public void init(@Observes StartupEvent ignored) {
         fetchTables().invoke(tables -> {
@@ -64,7 +69,6 @@ public class GameService {
                 .emitOn(GAMEPLAY_THREAD)
                 .call(this::handleMessage)
                 .subscribe().with(unused -> {
-                    LOG.infov("Socket opened");
                 }, failure -> {
                     LOG.errorv("Socket open failed: {0}", failure.getMessage());
                 }, () -> {
@@ -88,9 +92,14 @@ public class GameService {
      * Socket Events
      */
 
-    public void handleOnConnectEvent(String id, WebSocketConnection connection) {
+    public void handleOnConnectEvent(String id) {
         LOG.infov("Received connection event for {0}", id);
-        SOCKET_SESSIONS.put(id, new WebsocketSession(id, connection));
+        SOCKET_SESSIONS.put(id, new WebsocketSession(id));
+        emitMessageToHandler(id, new WebsocketEvent(
+                id,
+                "CONNECTED",
+                new JsonObject()
+        ));
     }
 
     public void handleOnCloseEvent(String id) {
@@ -104,6 +113,49 @@ public class GameService {
         SOCKET_HANDLER_EMITTER.emit(event);
     }
 
+    private Uni<Void> handleConnectedEvent(WebsocketEvent event) {
+        return Uni.createFrom().voidItem()
+                .call(() -> {
+                    LOG.infov("Received connected event for {0}: {1}", event.getId(), event.getData());
+                    return sendMessageToConnection(event);
+                });
+    }
+
+    private Uni<Void> handleAuthEvent(WebsocketEvent event) {
+        return Uni.createFrom().voidItem()
+                .call(() -> {
+                    LOG.infov("Received auth event for {0}: {1}", event.getId(), event.getData());
+                    String accessToken = event.getData().getString("accessToken");
+                    try {
+                        WebsocketSession session = SOCKET_SESSIONS.get(event.getId());
+                        if (session == null) {
+                            return Uni.createFrom().voidItem();
+                        }
+                        Integer userId = Integer.parseInt(jwtParser.parse(accessToken).getSubject());
+                        return userService.fetchUser(userId)
+                                .invoke(session::setUser)
+                                .invoke(() -> LOG.infov("User {0} authenticated", userId))
+                                .call(user -> sendMessageToConnection(new WebsocketEvent(
+                                        event.getId(),
+                                        "AUTH",
+                                        new JsonObject()
+                                                .put("user", user)
+                                )));
+                    } catch (Exception e) {
+                        LOG.errorv("Invalid token: {0}", e.getMessage());
+                        return Uni.createFrom().voidItem();
+                    }
+                });
+    }
+
+    private Uni<Void> handleTableEvent(WebsocketEvent event) {
+        return Uni.createFrom().voidItem();
+    }
+
+    private Uni<Void> handleGameEvent(WebsocketEvent event) {
+        return Uni.createFrom().voidItem();
+    }
+
     private Uni<Void> handleMessage(WebsocketEvent event) {
         return Uni.createFrom().voidItem()
                 .call(() -> {
@@ -114,31 +166,38 @@ public class GameService {
                         return Uni.createFrom().voidItem();
                     }
                     switch (event.getType()) {
+                        case "CONNECTED" -> {
+                            return handleConnectedEvent(event);
+                        }
                         case "AUTH" -> {
-                            LOG.infov("Received auth event for {0}: {1}", event.getId(), event.getData());
-                            String accessToken = event.getData().getString("accessToken");
-                            try {
-                                Integer userId = Integer.parseInt(jwtParser.parse(accessToken).getSubject());
-                                return userService.fetchUser(userId)
-                                        .invoke(session::setUser)
-                                        .invoke(() -> LOG.infov("User {0} authenticated", userId));
-                            } catch (Exception e) {
-                                LOG.errorv("Invalid token: {0}", e.getMessage());
-                            }
+                            return handleAuthEvent(event);
+                        }
+                        case "TABLE" -> {
+                            return handleTableEvent(event);
                         }
                         case "GAME" -> {
-                            LOG.infov("Received game event for {0}: {1}", event.getId(), event.getData());
+                            return handleGameEvent(event);
                         }
-                        default -> {
-                            LOG.infov("Received unknown event for {0}: {1}", event.getId(), event.getData());
-                        }
+                        default -> LOG.infov("Received unknown event for {0}: {1}", event.getId(), event.getData());
                     }
                     return Uni.createFrom().voidItem();
                 })
                 .onFailure().recoverWithUni(throwable -> {
-                    LOG.errorv("Error handling event {0}: {1}", event.getId(), throwable.getMessage());
+                    LOG.errorv(throwable, "Error handling event {0}: {1}", event.getId(), throwable.getMessage());
                     return Uni.createFrom().voidItem();
                 });
+    }
+
+    private Uni<Void> sendMessageToConnection(WebsocketEvent event) {
+        Optional<WebSocketConnection> optionalConnection = openConnections.findByConnectionId(event.getId());
+        if (optionalConnection.isPresent()) {
+            WebSocketConnection connection = optionalConnection.get();
+            return connection.sendText(event);
+        } else {
+            LOG.infov("Cannot send event to stale connection: {0}", event.getId());
+            return Uni.createFrom().voidItem();
+        }
+
     }
 
     /*

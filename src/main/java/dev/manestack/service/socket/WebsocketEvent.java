@@ -7,6 +7,15 @@ public class WebsocketEvent {
     private String type;
     private JsonObject data;
 
+    public WebsocketEvent() {
+    }
+
+    public WebsocketEvent(String id, String type, JsonObject data) {
+        this.id = id;
+        this.type = type;
+        this.data = data;
+    }
+
     public JsonObject getData() {
         return data;
     }
@@ -29,6 +38,14 @@ public class WebsocketEvent {
 
     public void setId(String id) {
         this.id = id;
+    }
+
+    public String toJsonString() {
+        JsonObject json = new JsonObject();
+        json.put("id", id);
+        json.put("type", type);
+        json.put("data", data);
+        return json.encode();
     }
 
     @Override

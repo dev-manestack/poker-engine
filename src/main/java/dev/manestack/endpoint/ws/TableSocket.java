@@ -6,7 +6,7 @@ import io.quarkus.websockets.next.*;
 import jakarta.inject.Inject;
 import org.jboss.logging.Logger;
 
-@WebSocket(path = "/table")
+@WebSocket(path = "/ws/table")
 public class TableSocket {
     private static final Logger LOG = Logger.getLogger(TableSocket.class);
     @Inject
@@ -16,7 +16,7 @@ public class TableSocket {
 
     @OnOpen
     public void onOpen() {
-        gameService.handleOnConnectEvent(connection.id(), connection);
+        gameService.handleOnConnectEvent(connection.id());
     }
 
     @OnClose
