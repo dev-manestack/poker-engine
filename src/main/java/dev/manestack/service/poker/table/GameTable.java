@@ -1,5 +1,7 @@
 package dev.manestack.service.poker.table;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import dev.manestack.service.socket.WebsocketSession;
 import dev.manestack.service.user.User;
 
 import java.time.OffsetDateTime;
@@ -20,6 +22,8 @@ public class GameTable {
     private GameSession currentSession;
     private final Map<Integer, GamePlayer> seats = new HashMap<>();
     private final Map<Integer, User> waitingList = new HashMap<>();
+    @JsonIgnore
+    private final Map<String, WebsocketSession> involvedSessions = new HashMap<>();
 
     public void validateCreate() {
         if (tableName == null || tableName.isEmpty()) {
@@ -42,11 +46,26 @@ public class GameTable {
         }
     }
 
-    public void joinWaitingList(User user) {
+    public void joinWaitingList(User user, WebsocketSession session) {
         waitingList.put(user.getUserId(), user);
+        involvedSessions.put(session.getId(), session);
     }
 
-    public void takeSeat(int seatNumber, GamePlayer gamePlayer) {
+    public boolean leaveTable(User user, WebsocketSession session) {
+        boolean isPlayer = false;
+        for (Map.Entry<Integer, GamePlayer> entry : seats.entrySet()) {
+            if (entry.getValue().getUser().getUserId() == user.getUserId()) {
+                leaveSeat(entry.getKey(), user.getUserId(), session);
+                isPlayer = true;
+                break;
+            }
+        }
+        waitingList.remove(user.getUserId());
+        involvedSessions.remove(session.getId());
+        return isPlayer;
+    }
+
+    public void takeSeat(int seatNumber, GamePlayer gamePlayer, WebsocketSession session) {
         if (seats.containsKey(seatNumber)) {
             throw new IllegalArgumentException("Seat " + seatNumber + " is already taken");
         }
@@ -55,18 +74,20 @@ public class GameTable {
         }
         for (Map.Entry<Integer, GamePlayer> entry : seats.entrySet()) {
             if (entry.getValue() != null && entry.getValue().getUser().getUserId() == gamePlayer.getUser().getUserId()) {
-                leaveSeat(entry.getKey(), entry.getValue().getUser().getUserId());
+                leaveSeat(entry.getKey(), entry.getValue().getUser().getUserId(), session);
             }
         }
         seats.put(seatNumber, gamePlayer);
+        involvedSessions.put(session.getId(), session);
     }
 
-    public void leaveSeat(int seatNumber, Integer userId) {
+    public void leaveSeat(int seatNumber, Integer userId, WebsocketSession session) {
         if (!seats.containsKey(seatNumber)) {
             throw new IllegalArgumentException("Seat " + seatNumber + " is not occupied");
         } else if (seats.get(seatNumber).getUser().getUserId() != userId) {
             throw new IllegalArgumentException("You cannot leave a seat that is not yours");
         }
+        involvedSessions.remove(session.getId());
         seats.remove(seatNumber);
     }
 
@@ -153,4 +174,15 @@ public class GameTable {
     public void setCreatedBy(Integer createdBy) {
         this.createdBy = createdBy;
     }
+
+    public Map<String, WebsocketSession> getInvolvedSessions() {
+        return involvedSessions;
+    }
+
+    public enum TableAction {
+        JOIN_TABLE,
+        TAKE_SEAT,
+        LEAVE_SEAT,
+    }
+
 }

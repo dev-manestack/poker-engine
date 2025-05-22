@@ -3,7 +3,6 @@ package dev.manestack.service;
 import dev.manestack.jooq.generated.tables.records.PokerTableRecord;
 import dev.manestack.service.poker.table.GamePlayer;
 import dev.manestack.service.poker.table.GameTable;
-import dev.manestack.service.poker.table.TableAction;
 import dev.manestack.service.socket.WebsocketEvent;
 import dev.manestack.service.socket.WebsocketSession;
 import io.quarkus.runtime.ShutdownEvent;
@@ -25,10 +24,7 @@ import org.jooq.UpdateSetFirstStep;
 import org.jooq.UpdateSetMoreStep;
 
 import java.time.OffsetDateTime;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -101,6 +97,25 @@ public class GameService {
                 });
     }
 
+    private Uni<Void> handleDisconnectEvent(WebsocketEvent event) {
+        return Uni.createFrom().voidItem()
+                .call(() -> {
+                    WebsocketSession session = SOCKET_SESSIONS.get(event.getId());
+                    if (session == null) {
+                        return Uni.createFrom().voidItem();
+                    }
+                    List<Uni<Void>> notifyOtherPlayers = new ArrayList<>();
+                    if (session.getTable() != null) {
+                        GameTable gameTable = session.getTable();
+                        boolean isPlayer = gameTable.leaveTable(session.getUser(), session);
+                        if (isPlayer) {
+                            return sendTableUpdateToParticipants(gameTable, "LEAVE_TABLE");
+                        }
+                    }
+                    return Uni.createFrom().voidItem();
+                });
+    }
+
     private Uni<Void> handleAuthEvent(WebsocketEvent event) {
         return Uni.createFrom().voidItem()
                 .call(() -> {
@@ -132,7 +147,7 @@ public class GameService {
         return Uni.createFrom().voidItem()
                 .call(() -> {
                     Long tableId = event.getData().getLong("tableId");
-                    TableAction action = TableAction.valueOf(event.getData().getString("action"));
+                    GameTable.TableAction action = GameTable.TableAction.valueOf(event.getData().getString("action"));
                     WebsocketSession session = SOCKET_SESSIONS.get(event.getId());
                     if (session == null) {
                         LOG.errorv("Session not found for {0}", event.getId());
@@ -145,10 +160,10 @@ public class GameService {
                     switch (action) {
                         case JOIN_TABLE -> {
                             Integer userId = session.getUser().getUserId();
-                            table.joinWaitingList(session.getUser());
+                            table.joinWaitingList(session.getUser(), session);
                             LOG.infov("User {0} joined waiting list for table {1}", userId, tableId);
                             return sendMessageToConnection(new WebsocketEvent(
-                                    event.getId(),
+                                    session.getId(),
                                     "TABLE",
                                     new JsonObject()
                                             .put("action", "JOIN_TABLE")
@@ -159,20 +174,15 @@ public class GameService {
                         case TAKE_SEAT -> {
                             Integer seatNumber = event.getData().getInteger("seatIndex");
                             GamePlayer gamePlayer = new GamePlayer(session.getUser(), 500);
-                            table.takeSeat(seatNumber, gamePlayer);
+                            table.takeSeat(seatNumber, gamePlayer, session);
                             LOG.infov("User {0} took seat {1} at table {2}", event.getId(), seatNumber, tableId);
-                            return sendMessageToConnection(new WebsocketEvent(
-                                    event.getId(),
-                                    "TABLE",
-                                    new JsonObject()
-                                            .put("action", "TAKE_SEAT")
-                                            .put("tableId", tableId)
-                                            .put("table", table)
-                            ));
+                            session.setTable(table);
+                            return sendTableUpdateToParticipants(table, "TAKE_SEAT");
                         }
                         case LEAVE_SEAT -> {
                             Integer seatNumber = event.getData().getInteger("seatIndex");
-                            table.leaveSeat(seatNumber, session.getUser().getUserId());
+                            table.leaveSeat(seatNumber, session.getUser().getUserId(), session);
+                            session.setTable(null);
                             LOG.infov("User {0} left seat {1} at table {2}", event.getId(), seatNumber, tableId);
                             return sendMessageToConnection(new WebsocketEvent(
                                     event.getId(),
@@ -205,6 +215,9 @@ public class GameService {
                         case "CONNECTED" -> {
                             return handleConnectedEvent(event);
                         }
+                        case "DISCONNECTED" -> {
+                            return handleDisconnectEvent(event);
+                        }
                         case "AUTH" -> {
                             return handleAuthEvent(event);
                         }
@@ -226,6 +239,26 @@ public class GameService {
                             new JsonObject().put("error", throwable.getMessage())
                     ));
                 });
+    }
+
+    private Uni<Void> sendTableUpdateToParticipants(GameTable table, String action) {
+        List<Uni<Void>> notifyPlayers = new ArrayList<>();
+        for (WebsocketSession playerSession : table.getInvolvedSessions().values()) {
+            notifyPlayers.add(sendMessageToConnection(new WebsocketEvent(
+                    playerSession.getId(),
+                    "TABLE",
+                    new JsonObject()
+                            .put("action", action)
+                            .put("tableId", table.getTableId())
+                            .put("table", table)
+            )));
+        }
+        if (notifyPlayers.isEmpty()) {
+            return Uni.createFrom().voidItem();
+        }
+        return Uni.join().all(notifyPlayers)
+                .andCollectFailures()
+                .replaceWithVoid();
     }
 
     private Uni<Void> sendMessageToConnection(WebsocketEvent event) {
@@ -255,7 +288,11 @@ public class GameService {
 
     public void handleOnCloseEvent(String id) {
         LOG.infov("Received close event for {0}", id);
-        SOCKET_SESSIONS.remove(id);
+        addWebsocketEventToQueue(id, new WebsocketEvent(
+                id,
+                "DISCONNECTED",
+                new JsonObject()
+        ));
     }
 
     public void addWebsocketEventToQueue(String id, WebsocketEvent event) {
