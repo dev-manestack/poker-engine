@@ -1,4 +1,6 @@
-package dev.manestack.service.poker.core;
+package dev.manestack.service.poker.table;
+
+import dev.manestack.service.user.User;
 
 import java.time.OffsetDateTime;
 import java.util.HashMap;
@@ -15,7 +17,9 @@ public class GameTable {
     private String variant;
     private OffsetDateTime createdAt;
     private Integer createdBy;
+    private GameSession currentSession;
     private final Map<Integer, GamePlayer> seats = new HashMap<>();
+    private final Map<Integer, User> waitingList = new HashMap<>();
 
     public void validateCreate() {
         if (tableName == null || tableName.isEmpty()) {
@@ -36,6 +40,34 @@ public class GameTable {
         if (maxBuyIn == null || maxBuyIn <= 0) {
             throw new IllegalArgumentException("Max buy-in must be greater than 0");
         }
+    }
+
+    public void joinWaitingList(User user) {
+        waitingList.put(user.getUserId(), user);
+    }
+
+    public void takeSeat(int seatNumber, GamePlayer gamePlayer) {
+        if (seats.containsKey(seatNumber)) {
+            throw new IllegalArgumentException("Seat " + seatNumber + " is already taken");
+        }
+        if (seats.size() >= maxPlayers) {
+            throw new IllegalStateException("No more seats available");
+        }
+        for (Map.Entry<Integer, GamePlayer> entry : seats.entrySet()) {
+            if (entry.getValue() != null && entry.getValue().getUser().getUserId() == gamePlayer.getUser().getUserId()) {
+                leaveSeat(entry.getKey(), entry.getValue().getUser().getUserId());
+            }
+        }
+        seats.put(seatNumber, gamePlayer);
+    }
+
+    public void leaveSeat(int seatNumber, Integer userId) {
+        if (!seats.containsKey(seatNumber)) {
+            throw new IllegalArgumentException("Seat " + seatNumber + " is not occupied");
+        } else if (seats.get(seatNumber).getUser().getUserId() != userId) {
+            throw new IllegalArgumentException("You cannot leave a seat that is not yours");
+        }
+        seats.remove(seatNumber);
     }
 
     public Long getTableId() {

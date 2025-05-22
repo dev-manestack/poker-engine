@@ -1,4 +1,4 @@
-package dev.manestack.service.poker.core;
+package dev.manestack.service.poker.card;
 
 public class GameCard {
     private final Suit suit;

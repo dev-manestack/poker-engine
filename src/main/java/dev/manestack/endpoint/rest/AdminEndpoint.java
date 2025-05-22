@@ -2,7 +2,7 @@ package dev.manestack.endpoint.rest;
 
 import dev.manestack.service.GameService;
 import dev.manestack.service.UserService;
-import dev.manestack.service.poker.core.GameTable;
+import dev.manestack.service.poker.table.GameTable;
 import dev.manestack.service.user.Deposit;
 import dev.manestack.service.user.User;
 import dev.manestack.service.user.Withdrawal;

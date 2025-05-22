@@ -1,4 +1,4 @@
-package dev.manestack.service.poker.core;
+package dev.manestack.service.poker.card;
 
 import java.util.ArrayList;
 import java.util.Collections;

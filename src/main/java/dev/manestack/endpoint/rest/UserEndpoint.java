@@ -1,6 +1,8 @@
 package dev.manestack.endpoint.rest;
 
+import dev.manestack.service.GameService;
 import dev.manestack.service.UserService;
+import dev.manestack.service.poker.table.GameTable;
 import dev.manestack.service.user.Deposit;
 import dev.manestack.service.user.User;
 import dev.manestack.service.user.Withdrawal;
@@ -19,6 +21,8 @@ public class UserEndpoint {
     CurrentIdentityAssociation identity;
     @Inject
     UserService userService;
+    @Inject
+    GameService gameService;
 
     @POST
     @Path("/login")
@@ -64,6 +68,13 @@ public class UserEndpoint {
     @Path("/search")
     public Uni<List<User>> searchUsers(@QueryParam("username") @DefaultValue("") String username) {
         return userService.searchUsers(username, false);
+    }
+
+    @GET
+    @Path("/table")
+    public Uni<List<GameTable>> fetchTables() {
+        return identity.getDeferredIdentity()
+                .chain(identity -> gameService.fetchTables());
     }
 
     @Authenticated

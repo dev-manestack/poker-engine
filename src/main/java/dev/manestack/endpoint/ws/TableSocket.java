@@ -26,6 +26,6 @@ public class TableSocket {
 
     @OnTextMessage
     public void onTextMessage(WebsocketEvent websocketEvent) {
-        gameService.emitMessageToHandler(connection.id(), websocketEvent);
+        gameService.addWebsocketEventToQueue(connection.id(), websocketEvent);
     }
 }
