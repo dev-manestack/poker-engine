@@ -28,6 +28,7 @@ import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+import static dev.manestack.jooq.generated.Tables.POKER_GAME_SESSION;
 import static dev.manestack.jooq.generated.Tables.POKER_TABLE;
 
 @ApplicationScoped

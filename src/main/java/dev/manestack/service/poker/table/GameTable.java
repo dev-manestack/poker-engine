@@ -20,6 +20,7 @@ public class GameTable {
     private OffsetDateTime createdAt;
     private Integer createdBy;
     private GameSession currentSession;
+    private Integer currentDealer;
     private final Map<Integer, GamePlayer> seats = new HashMap<>();
     private final Map<Integer, User> waitingList = new HashMap<>();
     @JsonIgnore
