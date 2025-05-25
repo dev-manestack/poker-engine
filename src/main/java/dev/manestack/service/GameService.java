@@ -2,6 +2,7 @@ package dev.manestack.service;
 
 import dev.manestack.jooq.generated.tables.records.PokerTableRecord;
 import dev.manestack.service.poker.table.GamePlayer;
+import dev.manestack.service.poker.table.GameSession;
 import dev.manestack.service.poker.table.GameTable;
 import dev.manestack.service.socket.WebsocketEvent;
 import dev.manestack.service.socket.WebsocketSession;
@@ -28,7 +29,6 @@ import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-import static dev.manestack.jooq.generated.Tables.POKER_GAME_SESSION;
 import static dev.manestack.jooq.generated.Tables.POKER_TABLE;
 
 @ApplicationScoped
@@ -200,8 +200,24 @@ public class GameService {
     }
 
     private Uni<Void> handleGameEvent(WebsocketEvent event) {
-        System.out.println("Received game event: " + event.getData());
-        return Uni.createFrom().voidItem();
+        return Uni.createFrom().voidItem()
+                .call(() -> {
+                    LOG.infov("Received game event for {0}: {1}", event.getId(), event.getData());
+                    Long tableId = event.getData().getLong("tableId");
+                    GameSession.ActionType action = GameSession.ActionType.valueOf(event.getData().getString("action"));
+                    Integer amount = event.getData().getInteger("amount", 0);
+                    WebsocketSession session = SOCKET_SESSIONS.get(event.getId());
+                    if (session == null) {
+                        LOG.errorv("Session not found for {0}", event.getId());
+                        return Uni.createFrom().voidItem();
+                    }
+                    GameTable table = TABLES.get(tableId);
+                    if (table == null) {
+                        return Uni.createFrom().failure(new RuntimeException("Table not found"));
+                    }
+                    table.receivePlayerAction(session.getUser().getUserId(), action, amount);
+                    return Uni.createFrom().voidItem();
+                });
     }
 
     private Uni<Void> handleMessage(WebsocketEvent event) {

@@ -1,11 +1,14 @@
 package dev.manestack.service.poker.table;
 
+import org.jboss.logging.Logger;
+
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
 
 public class GameSession {
+    private static final Logger LOG = Logger.getLogger(GameSession.class);
     private final long sessionId;
     private final GameTable table;
     private final Queue<GamePlayer> playerQueue = new LinkedList<>();
@@ -14,7 +17,7 @@ public class GameSession {
     private State state;
     private GamePlayer currentPlayer;
     private int pot;
-    private Queue<GamePlayer> currentQueue;
+    private final Queue<GamePlayer> currentQueue = new LinkedList<>();
 
     public GameSession(long sessionId, GameTable table, int dealerPosition, Map<Integer, GamePlayer> players) {
         this.sessionId = sessionId;
@@ -60,14 +63,10 @@ public class GameSession {
         if (currentPlayer.getUser().getUserId() != playerId) throw new IllegalStateException("Not this player's turn");
 
         switch (actionType) {
-            case FOLD -> currentPlayer.inHand = false;
-            case CALL -> {
-                currentPlayer.stack -= action.amount;
-                pot += action.amount;
-            }
-            case RAISE -> {
-                currentPlayer.stack -= action.amount;
-                pot += action.amount;
+            case FOLD -> currentPlayer.setInHand(false);
+            case CALL, RAISE -> {
+                currentPlayer.deductFromStack(amount);
+                pot += amount;
             }
             case CHECK -> {} // no-op
         }

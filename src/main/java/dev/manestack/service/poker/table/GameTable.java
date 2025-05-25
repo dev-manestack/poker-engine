@@ -3,12 +3,15 @@ package dev.manestack.service.poker.table;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import dev.manestack.service.socket.WebsocketSession;
 import dev.manestack.service.user.User;
+import org.jboss.logging.Logger;
 
 import java.time.OffsetDateTime;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 
 public class GameTable {
+    private static final Logger LOG = Logger.getLogger(GameTable.class);
     private Long tableId;
     private String tableName;
     private Integer maxPlayers;
@@ -19,8 +22,8 @@ public class GameTable {
     private String variant;
     private OffsetDateTime createdAt;
     private Integer createdBy;
-    private GameSession currentSession;
-    private Integer currentDealer;
+    private GameSession currentGameSession = null;
+    private Integer currentDealer = 0;
     private final Map<Integer, GamePlayer> seats = new HashMap<>();
     private final Map<Integer, User> waitingList = new HashMap<>();
     @JsonIgnore
@@ -80,6 +83,15 @@ public class GameTable {
         }
         seats.put(seatNumber, gamePlayer);
         involvedSessions.put(session.getId(), session);
+
+        System.out.println("HERE: " + seats + " " + currentGameSession);
+        if (currentGameSession == null) {
+            long nonNullPlayers = seats.values().stream().filter(Objects::nonNull).count();
+            System.out.println(nonNullPlayers);
+            if (nonNullPlayers >= 2) {
+                startGame();
+            }
+        }
     }
 
     public void leaveSeat(int seatNumber, Integer userId, WebsocketSession session) {
@@ -90,6 +102,25 @@ public class GameTable {
         }
         involvedSessions.remove(session.getId());
         seats.remove(seatNumber);
+    }
+
+    public void startGame() {
+        if (currentGameSession != null) {
+            throw new IllegalStateException("Game is already in progress");
+        }
+        if (seats.size() < 2) {
+            throw new IllegalStateException("Not enough players to start the game");
+        }
+        LOG.infov("Starting game at table {0} with players: {1}", tableName, seats.values());
+        currentGameSession = new GameSession(System.currentTimeMillis(), this, currentDealer, seats);
+        currentGameSession.startGame();
+    }
+
+    public void receivePlayerAction(Integer playerId, GameSession.ActionType actionType, int amount) {
+        if (currentGameSession == null) {
+            throw new IllegalStateException("No game in progress");
+        }
+        currentGameSession.receivePlayerAction(playerId, actionType, amount);
     }
 
     public Long getTableId() {

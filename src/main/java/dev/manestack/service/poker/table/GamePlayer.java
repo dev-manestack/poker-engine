@@ -4,13 +4,14 @@ import dev.manestack.service.user.User;
 
 public class GamePlayer {
     private User user;
-    private Integer balance;
+    private Integer stack;
+    private boolean inHand = false;
 
     public GamePlayer() {
     }
 
     public GamePlayer(User user, Integer balance) {
-        this.balance = balance;
+        this.stack = balance;
         this.user = user;
     }
 
@@ -22,11 +23,33 @@ public class GamePlayer {
         this.user = user;
     }
 
-    public Integer getBalance() {
-        return balance;
+    public Integer getStack() {
+        return stack;
     }
 
-    public void setBalance(Integer balance) {
-        this.balance = balance;
+    public void setStack(Integer stack) {
+        this.stack = stack;
+    }
+
+    public void deductFromStack(int amount) {
+        if (amount > stack) {
+            throw new IllegalArgumentException("Cannot deduct more than current stack");
+        }
+        this.stack -= amount;
+    }
+
+    public void addToStack(int amount) {
+        if (amount < 0) {
+            throw new IllegalArgumentException("Cannot add negative amount to stack");
+        }
+        this.stack += amount;
+    }
+
+    public boolean isInHand() {
+        return inHand;
+    }
+
+    public void setInHand(boolean inHand) {
+        this.inHand = inHand;
     }
 }
