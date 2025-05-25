@@ -1,12 +1,17 @@
 package dev.manestack.service.poker.table;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import dev.manestack.service.GameService;
+import dev.manestack.service.poker.card.GameCard;
+import dev.manestack.service.socket.WebsocketEvent;
 import dev.manestack.service.socket.WebsocketSession;
 import dev.manestack.service.user.User;
+import io.vertx.core.json.JsonObject;
 import org.jboss.logging.Logger;
 
 import java.time.OffsetDateTime;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
@@ -28,6 +33,7 @@ public class GameTable {
     private final Map<Integer, User> waitingList = new HashMap<>();
     @JsonIgnore
     private final Map<String, WebsocketSession> involvedSessions = new HashMap<>();
+    private GameService service;
 
     public void validateCreate() {
         if (tableName == null || tableName.isEmpty()) {
@@ -50,12 +56,16 @@ public class GameTable {
         }
     }
 
+    public void connectToServer(GameService service) {
+        this.service = service;
+    }
+
     public void joinWaitingList(User user, WebsocketSession session) {
         waitingList.put(user.getUserId(), user);
         involvedSessions.put(session.getId(), session);
     }
 
-    public boolean leaveTable(User user, WebsocketSession session) {
+    public void leaveTable(User user, WebsocketSession session) {
         boolean isPlayer = false;
         for (Map.Entry<Integer, GamePlayer> entry : seats.entrySet()) {
             if (entry.getValue().getUser().getUserId() == user.getUserId()) {
@@ -66,7 +76,9 @@ public class GameTable {
         }
         waitingList.remove(user.getUserId());
         involvedSessions.remove(session.getId());
-        return isPlayer;
+        if (isPlayer) {
+            sendTableUpdateToParticipants("LEAVE_TABLE");
+        }
     }
 
     public void takeSeat(int seatNumber, GamePlayer gamePlayer, WebsocketSession session) {
@@ -84,14 +96,14 @@ public class GameTable {
         seats.put(seatNumber, gamePlayer);
         involvedSessions.put(session.getId(), session);
 
-        System.out.println("HERE: " + seats + " " + currentGameSession);
         if (currentGameSession == null) {
             long nonNullPlayers = seats.values().stream().filter(Objects::nonNull).count();
-            System.out.println(nonNullPlayers);
             if (nonNullPlayers >= 2) {
                 startGame();
             }
         }
+
+        sendTableUpdateToParticipants("TAKE_SEAT");
     }
 
     public void leaveSeat(int seatNumber, Integer userId, WebsocketSession session) {
@@ -123,6 +135,52 @@ public class GameTable {
         currentGameSession.receivePlayerAction(playerId, actionType, amount);
     }
 
+    public void sendGameStateUpdateToParticipants(GameSession.State state, List<GameCard> cards) {
+        if (currentGameSession == null) {
+            throw new IllegalStateException("No game in progress");
+        }
+        for (WebsocketSession playerSession : involvedSessions.values()) {
+            service.sendWebsocketEvent(new WebsocketEvent(
+                    playerSession.getId(),
+                    "GAME",
+                    new JsonObject()
+                            .put("state", state)
+                            .put("cards", cards)
+            ));
+        }
+    }
+
+    public void sendTurnUpdateToParticipants(GamePlayer gamePlayer) {
+        if (currentGameSession == null) {
+            throw new IllegalStateException("No game in progress");
+        }
+        for (WebsocketSession playerSession : involvedSessions.values()) {
+            service.sendWebsocketEvent(new WebsocketEvent(
+                    playerSession.getId(),
+                    "PLAYER_TURN",
+                    new JsonObject()
+                            .put("currentPlayer", currentGameSession.getCurrentPlayer())
+                            .put("gameSession", currentGameSession)
+            ));
+        }
+    }
+
+    private void sendTableUpdateToParticipants(String action) {
+        for (WebsocketSession playerSession : involvedSessions.values()) {
+            service.sendWebsocketEvent(new WebsocketEvent(
+                    playerSession.getId(),
+                    "TABLE",
+                    new JsonObject()
+                            .put("action", action)
+                            .put("tableId", tableId)
+                            .put("table", this)
+            ));
+        }
+    }
+
+    /*
+     * Getters and Setters
+     */
     public Long getTableId() {
         return tableId;
     }
@@ -209,6 +267,10 @@ public class GameTable {
 
     public Map<String, WebsocketSession> getInvolvedSessions() {
         return involvedSessions;
+    }
+
+    public Map<Integer, User> getWaitingList() {
+        return waitingList;
     }
 
     public enum TableAction {
