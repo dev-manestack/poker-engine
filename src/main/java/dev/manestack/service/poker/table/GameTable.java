@@ -149,10 +149,11 @@ public class GameTable {
         for (WebsocketSession playerSession : involvedSessions.values()) {
             service.sendWebsocketEvent(new WebsocketEvent(
                     playerSession.getId(),
-                    "GAME_STATE",
+                    "GAME",
                     new JsonObject()
+                            .put("action", "GAME_STATE_UPDATE")
                             .put("state", state)
-                            .put("community_cards", communityCards)
+                            .put("communityCards", communityCards)
             ));
         }
     }
@@ -161,13 +162,20 @@ public class GameTable {
         if (currentGameSession == null) {
             throw new IllegalStateException("No game in progress");
         }
+        int seat = -1;
+        for (Map.Entry<Integer, GamePlayer> entry : seats.entrySet()) {
+            if (entry.getValue() != null && entry.getValue().getUser().getUserId() == gamePlayer.getUser().getUserId()) {
+                seat = entry.getKey();
+                break;
+            }
+        }
         for (WebsocketSession playerSession : involvedSessions.values()) {
             service.sendWebsocketEvent(new WebsocketEvent(
                     playerSession.getId(),
                     "GAME",
                     new JsonObject()
                             .put("action", "TURN_UPDATE")
-                            .put("currentPlayerId", gamePlayer.getUser().getUserId())
+                            .put("currentPlayerSeat", seat)
             ));
         }
     }
