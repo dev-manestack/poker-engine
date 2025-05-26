@@ -79,6 +79,12 @@ public class GameTable {
         if (isPlayer) {
             sendTableUpdateToParticipants("LEAVE_TABLE");
         }
+        // TODO: Handle reconnect later.
+        long nonNullPlayers = seats.values().stream().filter(Objects::nonNull).count();
+        if (nonNullPlayers < 2 && currentGameSession != null) {
+            LOG.infov("Not enough players left at table {0}, ending game session", tableName);
+            currentGameSession = null;
+        }
     }
 
     public void takeSeat(int seatNumber, GamePlayer gamePlayer, WebsocketSession session) {
@@ -96,6 +102,8 @@ public class GameTable {
         seats.put(seatNumber, gamePlayer);
         involvedSessions.put(session.getId(), session);
 
+        sendTableUpdateToParticipants("TAKE_SEAT");
+
         if (currentGameSession == null) {
             long nonNullPlayers = seats.values().stream().filter(Objects::nonNull).count();
             if (nonNullPlayers >= 2) {
@@ -103,7 +111,6 @@ public class GameTable {
             }
         }
 
-        sendTableUpdateToParticipants("TAKE_SEAT");
     }
 
     public void leaveSeat(int seatNumber, Integer userId, WebsocketSession session) {
@@ -135,17 +142,17 @@ public class GameTable {
         currentGameSession.receivePlayerAction(playerId, actionType, amount);
     }
 
-    public void sendGameStateUpdateToParticipants(GameSession.State state, List<GameCard> cards) {
+    public void sendGameStateUpdateToParticipants(GameSession.State state, List<GameCard> communityCards) {
         if (currentGameSession == null) {
             throw new IllegalStateException("No game in progress");
         }
         for (WebsocketSession playerSession : involvedSessions.values()) {
             service.sendWebsocketEvent(new WebsocketEvent(
                     playerSession.getId(),
-                    "GAME",
+                    "GAME_STATE",
                     new JsonObject()
                             .put("state", state)
-                            .put("cards", cards)
+                            .put("community_cards", communityCards)
             ));
         }
     }
@@ -157,11 +164,43 @@ public class GameTable {
         for (WebsocketSession playerSession : involvedSessions.values()) {
             service.sendWebsocketEvent(new WebsocketEvent(
                     playerSession.getId(),
-                    "PLAYER_TURN",
+                    "GAME",
                     new JsonObject()
-                            .put("currentPlayer", currentGameSession.getCurrentPlayer())
-                            .put("gameSession", currentGameSession)
+                            .put("action", "TURN_UPDATE")
+                            .put("currentPlayerId", gamePlayer.getUser().getUserId())
             ));
+        }
+    }
+
+    public void sendPersonalHoleCardsToPlayers() {
+        if (currentGameSession == null) {
+            throw new IllegalStateException("No game in progress");
+        }
+        for (WebsocketSession playerSession : involvedSessions.values()) {
+            long sessionUserID = playerSession.getUser().getUserId();
+            Map<Integer, List<GameCard>> hiddenHoleCards = new HashMap<>();
+            for (Map.Entry<Integer, GamePlayer> entry : seats.entrySet()) {
+                GamePlayer gamePlayer = entry.getValue();
+                if (gamePlayer != null) {
+                    hiddenHoleCards.put(entry.getKey(), List.of(
+                            new GameCard(true),
+                            new GameCard(true)
+                    ));
+                }
+            }
+            for (Map.Entry<Integer, GamePlayer> entry : seats.entrySet()) {
+                if (entry.getValue() != null && entry.getValue().getUser().getUserId() == sessionUserID) {
+                    Map<Integer, List<GameCard>> personalizedHoleCards = new HashMap<>(hiddenHoleCards);
+                    personalizedHoleCards.put(entry.getKey(), entry.getValue().getHoleCards());
+                    service.sendWebsocketEvent(new WebsocketEvent(
+                            playerSession.getId(),
+                            "GAME",
+                            new JsonObject()
+                                    .put("action", "HOLE_CARDS")
+                                    .put("holeCards", personalizedHoleCards)
+                    ));
+                }
+            }
         }
     }
 

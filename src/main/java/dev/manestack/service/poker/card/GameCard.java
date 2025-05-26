@@ -3,10 +3,22 @@ package dev.manestack.service.poker.card;
 public class GameCard {
     private final Suit suit;
     private final Rank rank;
+    private final boolean isSecret;
 
     public GameCard(Suit suit, Rank rank) {
         this.suit = suit;
         this.rank = rank;
+        this.isSecret = false;
+    }
+
+    public GameCard(boolean isSecret) {
+        this.suit = null;
+        this.rank = null;
+        this.isSecret = isSecret;
+    }
+
+    public boolean isSecret() {
+        return isSecret;
     }
 
     public Suit getSuit() {
@@ -23,6 +35,7 @@ public class GameCard {
         CLUBS,
         SPADES
     }
+
     public enum Rank {
         TWO(2),
         THREE(3),

@@ -42,7 +42,7 @@ public class GameSession {
         LOG.infov("Starting game session {0} with players: {1}", sessionId, playerQueue);
         state = State.PRE_FLOP;
         dealCards();
-        table.sendGameStateUpdateToParticipants(state, new ArrayList<>());
+        table.sendGameStateUpdateToParticipants(state, communityCards);
         rotateToNextPlayerQueue();
         promptNextPlayer();
     }
@@ -88,6 +88,7 @@ public class GameSession {
             player.addCard(deck.drawCard());
             player.addCard(deck.drawCard());
         }
+        table.sendPersonalHoleCardsToPlayers();
     }
 
     private void advanceGameState() {
@@ -112,7 +113,7 @@ public class GameSession {
             case FINISHED -> throw new IllegalStateException("Game is already over");
             default -> throw new IllegalStateException("Invalid state");
         }
-        table.sendGameStateUpdateToParticipants(state, new ArrayList<>());
+        table.sendGameStateUpdateToParticipants(state, communityCards);
         if (state != State.FINISHED) {
             rotateToNextPlayerQueue();
             promptNextPlayer();

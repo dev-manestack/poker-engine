@@ -13,6 +13,7 @@ public class GameDeck {
                 cards.add(new GameCard(suit, rank));
             }
         }
+        shuffle();
     }
 
     public void shuffle() {
