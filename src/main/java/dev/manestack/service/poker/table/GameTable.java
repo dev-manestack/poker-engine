@@ -10,10 +10,7 @@ import io.vertx.core.json.JsonObject;
 import org.jboss.logging.Logger;
 
 import java.time.OffsetDateTime;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 
 public class GameTable {
     private static final Logger LOG = Logger.getLogger(GameTable.class);
@@ -162,10 +159,29 @@ public class GameTable {
         if (currentGameSession == null) {
             throw new IllegalStateException("No game in progress");
         }
-        int seat = -1;
+        Optional<Map.Entry<Integer, GamePlayer>> playerSeat = seats.entrySet().stream()
+                .filter(entry -> entry.getValue() != null && entry.getValue().getUser().getUserId() == gamePlayer.getUser().getUserId())
+                .findFirst();
+        LOG.infov("Turn player has changed to {0}", gamePlayer.getUser().getUserId());
+        for (WebsocketSession playerSession : involvedSessions.values()) {
+            service.sendWebsocketEvent(new WebsocketEvent(
+                    playerSession.getId(),
+                    "GAME",
+                    new JsonObject()
+                            .put("action", "TURN_UPDATE")
+                            .put("currentPlayerSeat", playerSeat.isPresent() ? playerSeat.get().getKey() : -1)
+            ));
+        }
+    }
+
+    public void propagatePlayerEvent(Integer playerId, GameSession.ActionType actionType, int amount) {
+        if (currentGameSession == null) {
+            throw new IllegalStateException("No game in progress");
+        }
+        Integer seatId = null;
         for (Map.Entry<Integer, GamePlayer> entry : seats.entrySet()) {
-            if (entry.getValue() != null && entry.getValue().getUser().getUserId() == gamePlayer.getUser().getUserId()) {
-                seat = entry.getKey();
+            if (entry.getValue() != null && entry.getValue().getUser().getUserId() == playerId) {
+                seatId = entry.getKey();
                 break;
             }
         }
@@ -174,8 +190,10 @@ public class GameTable {
                     playerSession.getId(),
                     "GAME",
                     new JsonObject()
-                            .put("action", "TURN_UPDATE")
-                            .put("currentPlayerSeat", seat)
+                            .put("action", "PLAYER_ACTION")
+                            .put("seatId", seatId)
+                            .put("actionType", actionType.name())
+                            .put("amount", amount)
             ));
         }
     }

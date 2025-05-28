@@ -2,6 +2,8 @@ package dev.manestack.service.poker.table;
 
 import dev.manestack.service.poker.card.GameCard;
 import dev.manestack.service.poker.card.GameDeck;
+import dev.manestack.service.poker.card.GameHand;
+import dev.manestack.service.poker.card.GameHandEvaluator;
 import org.jboss.logging.Logger;
 
 import java.util.*;
@@ -10,7 +12,7 @@ public class GameSession {
     private static final Logger LOG = Logger.getLogger(GameSession.class);
     private final long sessionId;
     private final GameTable table;
-    private final Queue<GamePlayer> playerQueue = new LinkedList<>();
+    private final Queue<GamePlayer> originalPlayerQueue = new LinkedList<>();
     private final GameDeck deck;
 
     private State state;
@@ -31,15 +33,15 @@ public class GameSession {
             int seat = orderedSeats.get(seatIndex);
             GamePlayer player = players.get(seat);
             if (player != null) {
-                playerQueue.add(player);
+                originalPlayerQueue.add(player);
             }
         }
     }
 
 
     public void startGame() {
-        if (playerQueue.size() < 2) throw new IllegalStateException("Not enough players");
-        LOG.infov("Starting game session {0} with players: {1}", sessionId, playerQueue);
+        if (originalPlayerQueue.size() < 2) throw new IllegalStateException("Not enough players");
+        LOG.infov("Starting game session {0} with players: {1}", sessionId, originalPlayerQueue);
         state = State.PRE_FLOP;
         dealCards();
         table.sendGameStateUpdateToParticipants(state, communityCards);
@@ -49,9 +51,7 @@ public class GameSession {
 
     private void rotateToNextPlayerQueue() {
         currentQueue.clear();
-        for (int i = 0; i < playerQueue.size(); i++) {
-            currentQueue.add(playerQueue.poll());
-        }
+        currentQueue.addAll(originalPlayerQueue);
     }
 
     private void promptNextPlayer() {
@@ -73,18 +73,19 @@ public class GameSession {
             case FOLD -> currentPlayer.setInHand(false);
             case CALL, RAISE -> {
                 currentPlayer.deductFromStack(amount);
+                currentPlayer.addToTotalContribution(amount);
                 pot += amount;
             }
             case CHECK -> {
             } // no-op
         }
-
+        table.propagatePlayerEvent(playerId, actionType, amount);
         promptNextPlayer();
     }
 
     private void dealCards() {
         LOG.infov("Dealing cards to players in session {0}", sessionId);
-        for (GamePlayer player : playerQueue) {
+        for (GamePlayer player : originalPlayerQueue) {
             player.addCard(deck.drawCard());
             player.addCard(deck.drawCard());
         }
@@ -108,7 +109,10 @@ public class GameSession {
                 state = State.RIVER;
                 communityCards.add(deck.drawCard());
             }
-            case RIVER -> state = State.SHOWDOWN;
+            case RIVER -> {
+                state = State.SHOWDOWN;
+                calculateWinningsAndUpdateBalance();
+            }
             case SHOWDOWN -> state = State.FINISHED;
             case FINISHED -> throw new IllegalStateException("Game is already over");
             default -> throw new IllegalStateException("Invalid state");
@@ -118,6 +122,33 @@ public class GameSession {
             rotateToNextPlayerQueue();
             promptNextPlayer();
         }
+    }
+
+    public void calculateWinningsAndUpdateBalance() {
+        LOG.infov("Calculating winnings for players in session {0}", sessionId);
+        GameHand best = null;
+        List<GamePlayer> winners = new ArrayList<>();
+
+        for (GamePlayer player : originalPlayerQueue) {
+//            if (!player.isInHand()) continue;
+
+            List<GameCard> fullHand = new ArrayList<>(player.getHoleCards());
+            fullHand.addAll(communityCards);
+            LOG.infov("Full hand for player {0}: {1}", player.getUser().getUserId(), fullHand);
+            GameHand current = GameHandEvaluator.evaluate(fullHand);
+            LOG.infov("Best hand for player {0} is {1}", player.getUser().getUserId(), current);
+            if (best == null || current.compareTo(best) > 0) {
+                best = current;
+                winners.clear();
+                winners.add(player);
+            } else if (current.compareTo(best) == 0) {
+                winners.add(player);
+            }
+        }
+
+        LOG.infov("Best hand in session {0} is {1} with winners: {2}", sessionId, best, winners);
+        pot = 0; // Reset pot after distribution
+        LOG.infov("Winnings distributed, pot reset to {0}", pot);
     }
 
     /*
@@ -132,8 +163,8 @@ public class GameSession {
         return table;
     }
 
-    public Queue<GamePlayer> getPlayerQueue() {
-        return playerQueue;
+    public Queue<GamePlayer> getOriginalPlayerQueue() {
+        return originalPlayerQueue;
     }
 
     public State getState() {

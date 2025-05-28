@@ -179,7 +179,7 @@ public class GameService {
                 Integer seatNumber = event.getData().getInteger("seatIndex");
                 GamePlayer gamePlayer = new GamePlayer(session.getUser(), 500);
                 table.takeSeat(seatNumber, gamePlayer, session);
-                LOG.infov("User {0} took seat {1} at table {2}", event.getId(), seatNumber, tableId);
+                LOG.infov("User {0} took seat {1} at table {2}", session.getUser(), seatNumber, tableId);
                 session.setTable(table);
             }
             case LEAVE_SEAT -> {
