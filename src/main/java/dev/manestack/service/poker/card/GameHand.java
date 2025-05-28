@@ -5,14 +5,25 @@ import java.util.List;
 public class GameHand implements Comparable<GameHand> {
     private final GameHandRank rank;
     private final List<Integer> tiebreakers;
+    private final List<GameCard> combinationCards;
 
-    public GameHand(GameHandRank rank, List<Integer> tiebreakers) {
+    public GameHand(GameHandRank rank, List<Integer> tiebreakers, List<GameCard> combinationCards) {
         this.rank = rank;
         this.tiebreakers = tiebreakers;
+        this.combinationCards = combinationCards;
     }
 
     public GameHandRank getRank() {
         return rank;
+    }
+
+    public void setBestCombination(List<GameCard> cards) {
+        this.combinationCards.clear();
+        this.combinationCards.addAll(cards);
+    }
+
+    public List<GameCard> getCombinationCards() {
+        return combinationCards;
     }
 
     @Override
@@ -26,11 +37,7 @@ public class GameHand implements Comparable<GameHand> {
         return 0;
     }
 
-    @Override
-    public String toString() {
-        return "GameHand{" +
-                "rank=" + rank +
-                ", tiebreakers=" + tiebreakers +
-                '}';
+    public List<Integer> getTiebreakers() {
+        return tiebreakers;
     }
 }

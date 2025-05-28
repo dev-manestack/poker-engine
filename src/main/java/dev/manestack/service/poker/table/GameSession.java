@@ -20,6 +20,7 @@ public class GameSession {
     private int pot;
     private final List<GameCard> communityCards = new ArrayList<>();
     private final Queue<GamePlayer> currentQueue = new LinkedList<>();
+    private final Map<Integer, Integer> playerBets = new HashMap<>();
 
     public GameSession(long sessionId, GameTable table, int dealerPosition, Map<Integer, GamePlayer> players) {
         this.sessionId = sessionId;
@@ -51,7 +52,8 @@ public class GameSession {
 
     private void rotateToNextPlayerQueue() {
         currentQueue.clear();
-        currentQueue.addAll(originalPlayerQueue);
+        playerBets.clear();
+        currentQueue.addAll(originalPlayerQueue.stream().filter(GamePlayer::isInHand).toList());
     }
 
     private void promptNextPlayer() {
@@ -71,16 +73,60 @@ public class GameSession {
                 playerId, table.getTableName(), sessionId, actionType, amount);
         switch (actionType) {
             case FOLD -> currentPlayer.setInHand(false);
-            case CALL, RAISE -> {
+            case CALL -> {
+                if (amount <= 0) {
+                    LOG.warnv("Player {0} attempted to call with non-positive amount in session {1}", playerId, sessionId);
+                    return; // no-op if call is non-positive
+                }
+                if (playerBets.isEmpty()) {
+                    LOG.warnv("Player {0} called without any bets in session {1}", playerId, sessionId);
+                    return; // no-op if no bets to call
+                } else {
+                    int highestBet = playerBets.values().stream().max(Integer::compareTo).orElse(0);
+                    if (amount < highestBet) {
+                        LOG.warnv("Player {0} attempted to call with insufficient amount in session {1}", playerId, sessionId);
+                        return; // no-op if call is less than highest bet
+                    }
+                    currentPlayer.deductFromStack(amount);
+                    currentPlayer.addToTotalContribution(amount);
+                    pot += amount;
+                    playerBets.put(playerId, amount);
+                }
+            }
+            case RAISE -> {
+                if (amount <= 0) {
+                    LOG.warnv("Player {0} attempted to raise with non-positive amount in session {1}", playerId, sessionId);
+                    return; // no-op if raise is non-positive
+                }
                 currentPlayer.deductFromStack(amount);
                 currentPlayer.addToTotalContribution(amount);
                 pot += amount;
+                playerBets.put(playerId, amount);
+                LOG.infov("Player {0} raised by {1} chips in session {2}", playerId, amount, sessionId);
+                currentQueue.clear();
+                for (GamePlayer player : originalPlayerQueue) {
+                    if (player.isInHand() && player != currentPlayer) {
+                        currentQueue.add(player);
+                    }
+                }
             }
             case CHECK -> {
+                if (!playerBets.isEmpty()) {
+                    LOG.warnv("Player {0} attempted to check when there are bets in session {1}", playerId, sessionId);
+                    return;
+                }
+                LOG.infov("Player {0} checked in session {1}", playerId, sessionId);
             } // no-op
         }
-        table.propagatePlayerEvent(playerId, actionType, amount);
-        promptNextPlayer();
+        table.propagatePlayerEvent(playerId, actionType, amount, playerBets);
+        int remainingPlayers = (int) originalPlayerQueue.stream().filter(GamePlayer::isInHand).count();
+        if (remainingPlayers <= 1) {
+            LOG.infov("Only one player remaining in hand. Finishing game state early for session {0}", sessionId);
+            state = State.SHOWDOWN;
+            advanceGameState();
+        } else {
+            promptNextPlayer();
+        }
     }
 
     private void dealCards() {
@@ -88,6 +134,7 @@ public class GameSession {
         for (GamePlayer player : originalPlayerQueue) {
             player.addCard(deck.drawCard());
             player.addCard(deck.drawCard());
+            player.setInHand(true);
         }
         table.sendPersonalHoleCardsToPlayers();
     }
@@ -132,17 +179,19 @@ public class GameSession {
         List<GamePlayer> winners = new ArrayList<>();
 
         for (GamePlayer player : originalPlayerQueue) {
-            List<GameCard> fullHand = new ArrayList<>(player.getHoleCards());
-            fullHand.addAll(communityCards);
-            LOG.infov("Full hand for player {0}: {1}", player.getUser().getUserId(), fullHand);
-            GameHand current = GameHandEvaluator.evaluate(fullHand);
-            LOG.infov("Best hand for player {0} is {1}", player.getUser().getUserId(), current);
-            if (best == null || current.compareTo(best) > 0) {
-                best = current;
-                winners.clear();
-                winners.add(player);
-            } else if (current.compareTo(best) == 0) {
-                winners.add(player);
+            if (player.isInHand()) {
+                List<GameCard> fullHand = new ArrayList<>(player.getHoleCards());
+                fullHand.addAll(communityCards);
+                LOG.infov("Full hand for player {0}: {1}", player.getUser().getUserId(), fullHand);
+                GameHand current = GameHandEvaluator.evaluate(fullHand);
+                LOG.infov("Best hand for player {0} is {1} consisting of {2}", player.getUser().getUserId(), current.getRank(), current.getCombinationCards());
+                if (best == null || current.compareTo(best) > 0) {
+                    best = current;
+                    winners.clear();
+                    winners.add(player);
+                } else if (current.compareTo(best) == 0) {
+                    winners.add(player);
+                }
             }
         }
         for (GamePlayer winner : winners) {

@@ -200,7 +200,7 @@ public class GameTable {
         }
     }
 
-    public void propagatePlayerEvent(Integer playerId, GameSession.ActionType actionType, int amount) {
+    public void propagatePlayerEvent(Integer playerId, GameSession.ActionType actionType, int amount, Map<Integer, Integer> playerBets) {
         if (currentGameSession == null) {
             throw new IllegalStateException("No game in progress");
         }
@@ -220,6 +220,7 @@ public class GameTable {
                             .put("seatId", seatId)
                             .put("actionType", actionType.name())
                             .put("amount", amount)
+                            .put("currentBets", playerBets)
             ));
         }
     }
