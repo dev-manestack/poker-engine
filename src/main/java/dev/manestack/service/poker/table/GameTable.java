@@ -132,6 +132,11 @@ public class GameTable {
         currentGameSession.startGame();
     }
 
+    public void startNextGame() {
+        this.currentGameSession = null;
+        startGame();
+    }
+
     public void receivePlayerAction(Integer playerId, GameSession.ActionType actionType, int amount) {
         if (currentGameSession == null) {
             throw new IllegalStateException("No game in progress");
@@ -170,6 +175,27 @@ public class GameTable {
                     new JsonObject()
                             .put("action", "TURN_UPDATE")
                             .put("currentPlayerSeat", playerSeat.isPresent() ? playerSeat.get().getKey() : -1)
+            ));
+        }
+    }
+
+    public void propagatePlayerStacks() {
+        if (currentGameSession == null) {
+            throw new IllegalStateException("No game in progress");
+        }
+        for (WebsocketSession playerSession : involvedSessions.values()) {
+            Map<Integer, Integer> playerStacks = new HashMap<>();
+            for (Map.Entry<Integer, GamePlayer> entry : seats.entrySet()) {
+                if (entry.getValue() != null) {
+                    playerStacks.put(entry.getKey(), entry.getValue().getStack());
+                }
+            }
+            service.sendWebsocketEvent(new WebsocketEvent(
+                    playerSession.getId(),
+                    "GAME",
+                    new JsonObject()
+                            .put("action", "PLAYER_STACKS")
+                            .put("stacks", playerStacks)
             ));
         }
     }

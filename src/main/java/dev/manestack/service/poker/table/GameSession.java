@@ -109,11 +109,11 @@ public class GameSession {
                 state = State.RIVER;
                 communityCards.add(deck.drawCard());
             }
-            case RIVER -> {
-                state = State.SHOWDOWN;
+            case RIVER -> state = State.SHOWDOWN;
+            case SHOWDOWN -> {
+                state = State.FINISHED;
                 calculateWinningsAndUpdateBalance();
             }
-            case SHOWDOWN -> state = State.FINISHED;
             case FINISHED -> throw new IllegalStateException("Game is already over");
             default -> throw new IllegalStateException("Invalid state");
         }
@@ -121,6 +121,8 @@ public class GameSession {
         if (state != State.FINISHED) {
             rotateToNextPlayerQueue();
             promptNextPlayer();
+        } else {
+            table.startNextGame();
         }
     }
 
@@ -130,8 +132,6 @@ public class GameSession {
         List<GamePlayer> winners = new ArrayList<>();
 
         for (GamePlayer player : originalPlayerQueue) {
-//            if (!player.isInHand()) continue;
-
             List<GameCard> fullHand = new ArrayList<>(player.getHoleCards());
             fullHand.addAll(communityCards);
             LOG.infov("Full hand for player {0}: {1}", player.getUser().getUserId(), fullHand);
@@ -145,10 +145,13 @@ public class GameSession {
                 winners.add(player);
             }
         }
-
+        for (GamePlayer winner : winners) {
+            int winnings = pot / winners.size();
+            winner.addToStack(winnings);
+            LOG.infov("Player {0} wins {1} chips", winner.getUser().getUserId(), winnings);
+        }
+        table.propagatePlayerStacks();
         LOG.infov("Best hand in session {0} is {1} with winners: {2}", sessionId, best, winners);
-        pot = 0; // Reset pot after distribution
-        LOG.infov("Winnings distributed, pot reset to {0}", pot);
     }
 
     /*
