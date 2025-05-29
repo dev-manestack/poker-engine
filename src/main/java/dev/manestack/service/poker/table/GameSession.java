@@ -90,7 +90,7 @@ public class GameSession {
                     currentPlayer.deductFromStack(amount);
                     currentPlayer.addToTotalContribution(amount);
                     pot += amount;
-                    playerBets.put(playerId, amount);
+                    playerBets.put(currentPlayer.getSeatId(), amount);
                 }
             }
             case RAISE -> {
@@ -101,7 +101,7 @@ public class GameSession {
                 currentPlayer.deductFromStack(amount);
                 currentPlayer.addToTotalContribution(amount);
                 pot += amount;
-                playerBets.put(playerId, amount);
+                playerBets.put(currentPlayer.getSeatId(), amount);
                 LOG.infov("Player {0} raised by {1} chips in session {2}", playerId, amount, sessionId);
                 currentQueue.clear();
                 for (GamePlayer player : originalPlayerQueue) {
@@ -118,7 +118,7 @@ public class GameSession {
                 LOG.infov("Player {0} checked in session {1}", playerId, sessionId);
             } // no-op
         }
-        table.propagatePlayerEvent(playerId, actionType, amount, playerBets);
+        table.propagatePlayerEvent(currentPlayer.getSeatId(), actionType, amount, playerBets);
         int remainingPlayers = (int) originalPlayerQueue.stream().filter(GamePlayer::isInHand).count();
         if (remainingPlayers <= 1) {
             LOG.infov("Only one player remaining in hand. Finishing game state early for session {0}", sessionId);

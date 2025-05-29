@@ -97,6 +97,7 @@ public class GameTable {
             }
         }
         seats.put(seatNumber, gamePlayer);
+        gamePlayer.setSeatId(seatNumber);
         involvedSessions.put(session.getId(), session);
 
         sendTableUpdateToParticipants("TAKE_SEAT");
@@ -164,17 +165,13 @@ public class GameTable {
         if (currentGameSession == null) {
             throw new IllegalStateException("No game in progress");
         }
-        Optional<Map.Entry<Integer, GamePlayer>> playerSeat = seats.entrySet().stream()
-                .filter(entry -> entry.getValue() != null && entry.getValue().getUser().getUserId() == gamePlayer.getUser().getUserId())
-                .findFirst();
-        LOG.infov("Turn player has changed to {0}", gamePlayer.getUser().getUserId());
         for (WebsocketSession playerSession : involvedSessions.values()) {
             service.sendWebsocketEvent(new WebsocketEvent(
                     playerSession.getId(),
                     "GAME",
                     new JsonObject()
                             .put("action", "TURN_UPDATE")
-                            .put("currentPlayerSeat", playerSeat.isPresent() ? playerSeat.get().getKey() : -1)
+                            .put("currentPlayerSeat", gamePlayer.getSeatId())
             ));
         }
     }
@@ -200,16 +197,9 @@ public class GameTable {
         }
     }
 
-    public void propagatePlayerEvent(Integer playerId, GameSession.ActionType actionType, int amount, Map<Integer, Integer> playerBets) {
+    public void propagatePlayerEvent(Integer seatId, GameSession.ActionType actionType, int amount, Map<Integer, Integer> playerBets) {
         if (currentGameSession == null) {
             throw new IllegalStateException("No game in progress");
-        }
-        Integer seatId = null;
-        for (Map.Entry<Integer, GamePlayer> entry : seats.entrySet()) {
-            if (entry.getValue() != null && entry.getValue().getUser().getUserId() == playerId) {
-                seatId = entry.getKey();
-                break;
-            }
         }
         for (WebsocketSession playerSession : involvedSessions.values()) {
             service.sendWebsocketEvent(new WebsocketEvent(
@@ -221,6 +211,7 @@ public class GameTable {
                             .put("actionType", actionType.name())
                             .put("amount", amount)
                             .put("currentBets", playerBets)
+                            .put("currentPot", currentGameSession.getPot())
             ));
         }
     }

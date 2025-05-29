@@ -8,6 +8,7 @@ import java.util.List;
 
 public class GamePlayer {
     private User user;
+    private Integer seatId;
     private Integer stack;
     private boolean inHand = false;
     private boolean isAllIn = false;
@@ -20,6 +21,14 @@ public class GamePlayer {
     public GamePlayer(User user, Integer balance) {
         this.stack = balance;
         this.user = user;
+    }
+
+    public Integer getSeatId() {
+        return seatId;
+    }
+
+    public void setSeatId(Integer seatId) {
+        this.seatId = seatId;
     }
 
     public User getUser() {
