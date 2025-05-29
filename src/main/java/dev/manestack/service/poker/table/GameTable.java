@@ -10,7 +10,10 @@ import io.vertx.core.json.JsonObject;
 import org.jboss.logging.Logger;
 
 import java.time.OffsetDateTime;
-import java.util.*;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 
 public class GameTable {
     private static final Logger LOG = Logger.getLogger(GameTable.class);
@@ -131,6 +134,7 @@ public class GameTable {
         LOG.infov("Starting game at table {0} with players: {1}", tableName, seats.values());
         currentGameSession = new GameSession(System.currentTimeMillis(), this, currentDealer, seats);
         currentGameSession.startGame();
+        currentDealer = (currentDealer + 1) % maxPlayers;
     }
 
     public void startNextGame() {
@@ -156,6 +160,8 @@ public class GameTable {
                     new JsonObject()
                             .put("action", "GAME_STATE_UPDATE")
                             .put("state", state)
+                            .put("currentPot", currentGameSession.getPot())
+                            .put("playerBets", currentGameSession.getPlayerBets())
                             .put("communityCards", communityCards)
             ));
         }
@@ -211,7 +217,7 @@ public class GameTable {
                             .put("actionType", actionType.name())
                             .put("amount", amount)
                             .put("currentBets", playerBets)
-                            .put("currentPot", currentGameSession.getPot())
+                            .put("currentPot", currentGameSession.getPot() - playerBets.values().stream().mapToInt(Integer::intValue).sum())
             ));
         }
     }

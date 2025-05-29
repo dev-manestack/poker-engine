@@ -14,6 +14,7 @@ public class GameSession {
     private final GameTable table;
     private final Queue<GamePlayer> originalPlayerQueue = new LinkedList<>();
     private final GameDeck deck;
+    private final int dealerPosition;
 
     private State state;
     private GamePlayer currentPlayer;
@@ -27,10 +28,12 @@ public class GameSession {
         this.table = table;
         this.state = State.WAITING_FOR_PLAYERS;
         this.deck = new GameDeck();
+        this.dealerPosition = dealerPosition;
         List<Integer> orderedSeats = players.keySet().stream().sorted().toList();
         int startIndex = (orderedSeats.indexOf(dealerPosition) + 1) % orderedSeats.size();
+        int adjustedStartIndex = (startIndex - 2 + orderedSeats.size()) % orderedSeats.size();
         for (int i = 0; i < orderedSeats.size(); i++) {
-            int seatIndex = (startIndex + i) % orderedSeats.size();
+            int seatIndex = (adjustedStartIndex + i) % orderedSeats.size();
             int seat = orderedSeats.get(seatIndex);
             GamePlayer player = players.get(seat);
             if (player != null) {
@@ -45,8 +48,12 @@ public class GameSession {
         LOG.infov("Starting game session {0} with players: {1}", sessionId, originalPlayerQueue);
         state = State.PRE_FLOP;
         dealCards();
-        table.sendGameStateUpdateToParticipants(state, communityCards);
         rotateToNextPlayerQueue();
+        table.sendGameStateUpdateToParticipants(state, communityCards);
+        int smallBlindAmount = table.getSmallBlind();
+        int bigBlindAmount = table.getBigBlind();
+        actForPlayer(ActionType.SMALL_BLIND, smallBlindAmount);
+        actForPlayer(ActionType.BIG_BLIND, bigBlindAmount);
         promptNextPlayer();
     }
 
@@ -67,11 +74,23 @@ public class GameSession {
                 currentPlayer.getUser().getUserId(), table.getTableName(), sessionId);
     }
 
+    private void actForPlayer(ActionType actionType, int amount) {
+        currentPlayer = currentQueue.poll();
+        table.sendTurnUpdateToParticipants(currentPlayer);
+        receivePlayerAction(currentPlayer.getUser().getUserId(), actionType, amount);
+    }
+
     public void receivePlayerAction(Integer playerId, ActionType actionType, int amount) {
         if (currentPlayer.getUser().getUserId() != playerId) throw new IllegalStateException("Not this player's turn");
         LOG.infov("Player {0} at table {1} in session {2} performed action: {3} with amount: {4}",
                 playerId, table.getTableName(), sessionId, actionType, amount);
         switch (actionType) {
+            case SMALL_BLIND, BIG_BLIND -> {
+                currentPlayer.deductFromStack(amount);
+                currentPlayer.addToTotalContribution(amount);
+                pot += amount;
+                playerBets.put(currentPlayer.getSeatId(), amount);
+            }
             case FOLD -> currentPlayer.setInHand(false);
             case CALL -> {
                 if (amount <= 0) {
@@ -83,7 +102,7 @@ public class GameSession {
                     return; // no-op if no bets to call
                 } else {
                     int highestBet = playerBets.values().stream().max(Integer::compareTo).orElse(0);
-                    if (amount < highestBet) {
+                    if (highestBet > amount + playerBets.get(currentPlayer.getSeatId())) {
                         LOG.warnv("Player {0} attempted to call with insufficient amount in session {1}", playerId, sessionId);
                         return; // no-op if call is less than highest bet
                     }
@@ -124,7 +143,7 @@ public class GameSession {
             LOG.infov("Only one player remaining in hand. Finishing game state early for session {0}", sessionId);
             state = State.SHOWDOWN;
             advanceGameState();
-        } else {
+        } else if (!ActionType.BIG_BLIND.equals(actionType) && !ActionType.SMALL_BLIND.equals(actionType)) {
             promptNextPlayer();
         }
     }
@@ -235,6 +254,10 @@ public class GameSession {
         return currentQueue;
     }
 
+    public Map<Integer, Integer> getPlayerBets() {
+        return playerBets;
+    }
+
     public enum State {
         WAITING_FOR_PLAYERS,
         PRE_FLOP,
@@ -247,6 +270,8 @@ public class GameSession {
 
     public enum ActionType {
         FOLD,
+        SMALL_BLIND,
+        BIG_BLIND,
         CALL,
         RAISE,
         CHECK
