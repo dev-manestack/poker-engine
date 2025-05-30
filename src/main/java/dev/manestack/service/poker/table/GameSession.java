@@ -54,6 +54,9 @@ public class GameSession {
         int bigBlindAmount = table.getBigBlind();
         actForPlayer(ActionType.SMALL_BLIND, smallBlindAmount);
         actForPlayer(ActionType.BIG_BLIND, bigBlindAmount);
+        if (currentQueue.isEmpty()) {
+            currentQueue.addAll(originalPlayerQueue.stream().filter(GamePlayer::isInHand).toList());
+        }
         promptNextPlayer();
     }
 
