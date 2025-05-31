@@ -66,25 +66,14 @@ public class GameTable {
     }
 
     public void leaveTable(User user, WebsocketSession session) {
-        boolean isPlayer = false;
         for (Map.Entry<Integer, GamePlayer> entry : seats.entrySet()) {
             if (entry.getValue().getUser().getUserId() == user.getUserId()) {
                 leaveSeat(entry.getKey(), user.getUserId(), session);
-                isPlayer = true;
                 break;
             }
         }
         waitingList.remove(user.getUserId());
         involvedSessions.remove(session.getId());
-        if (isPlayer) {
-            sendTableUpdateToParticipants("LEAVE_TABLE");
-        }
-        // TODO: Handle reconnect later.
-        long nonNullPlayers = seats.values().stream().filter(Objects::nonNull).count();
-        if (nonNullPlayers < 2 && currentGameSession != null) {
-            LOG.infov("Not enough players left at table {0}, ending game session", tableName);
-            currentGameSession = null;
-        }
     }
 
     public void takeSeat(int seatNumber, GamePlayer gamePlayer, WebsocketSession session) {
@@ -120,8 +109,21 @@ public class GameTable {
         } else if (seats.get(seatNumber).getUser().getUserId() != userId) {
             throw new IllegalArgumentException("You cannot leave a seat that is not yours");
         }
+        GamePlayer gamePlayer = seats.remove(seatNumber);
+        boolean isPlayer = false;
+        for (Map.Entry<Integer, GamePlayer> entry : seats.entrySet()) {
+            if (entry.getValue().getUser().getUserId() == gamePlayer.getUser().getUserId()) {
+                isPlayer = true;
+                break;
+            }
+        }
+        LOG.infov("Player {0} left seat {1} at table {2}", gamePlayer.getUser().getUsername(), seatNumber, tableName);
+        waitingList.remove(gamePlayer.getUser().getUserId());
         involvedSessions.remove(session.getId());
-        seats.remove(seatNumber);
+        if (isPlayer) {
+            sendTableUpdateToParticipants("LEAVE_TABLE");
+        }
+        currentGameSession.handleLeave(userId);
     }
 
     public void startGame() {
@@ -131,6 +133,7 @@ public class GameTable {
         if (seats.size() < 2) {
             throw new IllegalStateException("Not enough players to start the game");
         }
+
         LOG.infov("Starting game at table {0} with players: {1}", tableName, seats.values());
         currentGameSession = new GameSession(System.currentTimeMillis(), this, currentDealer, seats);
         currentGameSession.startGame();

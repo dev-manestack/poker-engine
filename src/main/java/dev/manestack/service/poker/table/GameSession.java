@@ -83,6 +83,23 @@ public class GameSession {
         receivePlayerAction(currentPlayer.getUser().getUserId(), actionType, amount);
     }
 
+    public void handleLeave(Integer userId) {
+        LOG.infov("Player {0} left the game session {1}", userId, sessionId);
+        GamePlayer leavingPlayer = originalPlayerQueue.stream()
+                .filter(player -> player.getUser().getUserId() == userId)
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException("Player not found in session"));
+        leavingPlayer.setInHand(false);
+        if (currentPlayer != null && currentPlayer.getUser().getUserId() == userId) {
+            promptNextPlayer();
+        }
+        if (originalPlayerQueue.stream().filter(GamePlayer::isInHand).count() <= 1) {
+            LOG.infov("Only one player remaining in hand. Finishing game state early for session {0}", sessionId);
+            state = State.SHOWDOWN;
+            advanceGameState();
+        }
+    }
+
     public void receivePlayerAction(Integer playerId, ActionType actionType, int amount) {
         if (currentPlayer.getUser().getUserId() != playerId) throw new IllegalStateException("Not this player's turn");
         LOG.infov("Player {0} at table {1} in session {2} performed action: {3} with amount: {4}",
@@ -112,7 +129,7 @@ public class GameSession {
                     currentPlayer.deductFromStack(amount);
                     currentPlayer.addToTotalContribution(amount);
                     pot += amount;
-                    playerBets.put(currentPlayer.getSeatId(), amount);
+                    playerBets.put(currentPlayer.getSeatId(), playerBets.getOrDefault(currentPlayer.getSeatId(), 0) + amount);
                 }
             }
             case RAISE -> {
@@ -123,7 +140,7 @@ public class GameSession {
                 currentPlayer.deductFromStack(amount);
                 currentPlayer.addToTotalContribution(amount);
                 pot += amount;
-                playerBets.put(currentPlayer.getSeatId(), amount);
+                playerBets.put(currentPlayer.getSeatId(), playerBets.getOrDefault(currentPlayer.getSeatId(), 0) + amount);
                 LOG.infov("Player {0} raised by {1} chips in session {2}", playerId, amount, sessionId);
                 currentQueue.clear();
                 for (GamePlayer player : originalPlayerQueue) {

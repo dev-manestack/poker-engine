@@ -157,7 +157,7 @@
                 <configuration>
                     <jdbc>
                         <driver>org.postgresql.Driver</driver>
-                        <url>jdbc:postgresql://127.0.0.1:5433/poker</url>
+                        <url>jdbc:postgresql://127.0.0.1:5432/poker</url>
                         <user>postgres</user>
                         <password>postgres.123</password>
                     </jdbc>
